@@ -1,26 +1,50 @@
 @import "tailwindcss";
 
+@theme {
+  --color-avPrimary: #6200EE;
+  --color-avPrimaryDark: #BB86FC;
+  --color-avSecondary: #03DAC5;
+  --color-avAccent: #018786;
+  --color-avBackgroundLight: #F5F5F5;
+  --color-avSurfaceLight: #FFFFFF;
+  --color-avTextPrimaryLight: #121212;
+  --color-avTextSecondaryLight: #757575;
+  --color-avSuccess: #4CAF50;
+  --color-avError: #B00020;
+  --color-avBorderLight: #E0E0E0;
+  --color-avBorderDark: #374151;
+  
+  --font-inter: 'Inter', sans-serif;
+  
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-xl: 50px;
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+html, body {
+  background-color: #F5F5F5;
+  color: #121212;
+  font-family: var(--font-inter), sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
 }
