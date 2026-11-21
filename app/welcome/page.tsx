@@ -19,7 +19,6 @@ export default function WelcomeScreen() {
       </div>
 
       <div className="flex-1 flex flex-col items-center justify-center px-8 text-center mt-10">
-        {/* LOGO PLACEHOLDER */}
         <div className="w-24 h-24 bg-white/10 rounded-2xl flex items-center justify-center mb-6 shadow-lg border border-white/20">
           <span className="text-4xl font-bold">T</span>
         </div>
@@ -32,7 +31,7 @@ export default function WelcomeScreen() {
 
       <div className="px-8 pb-16 space-y-6 w-full max-w-md mx-auto">
         <button 
-          onClick={() => router.push("/login")}
+          onClick={() => router.push("/signup")} // Changed to Signup
           className="w-full bg-white text-[#2C4AFF] font-bold text-lg py-4 rounded-2xl shadow-lg hover:bg-gray-50 transition-all"
         >
           Continue as Customer
@@ -41,7 +40,7 @@ export default function WelcomeScreen() {
         <div className="text-center space-y-1">
           <p className="text-white/70 text-sm">Own or manage a shop?</p>
           <button 
-            onClick={() => router.push("/owner/login")}
+            onClick={() => router.push("/owner/signup")} // Changed to Owner Signup
             className="text-white font-semibold text-base underline underline-offset-4 decoration-white/30 hover:decoration-white transition-all"
           >
             Manage My Shop

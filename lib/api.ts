@@ -1,6 +1,6 @@
 import { 
   HomeProduct, ProductSectionResponse, ShopSearchResponse, ShopDetailsResponse, 
-  UserDetails, AuthResponse, LoginRequest, SignupRequest, OwnerNotification, Product
+  UserDetails, AuthResponse, LoginRequest, SignupRequest, OwnerNotification, Product, CartItem, CheckoutResponse
 } from "./types";
 
 const BASE_URL = "https://api.avapp.in/";
@@ -55,8 +55,6 @@ const apiFetch = async (endpoint: string, options: RequestInit = {}) => {
   return res; 
 };
 
-// --- AUTH ENDPOINTS ---
-
 export const loginUser = async (data: LoginRequest) => {
   const res = await apiFetch("auth/login", { method: "POST", body: JSON.stringify(data) });
   if (res.ok) {
@@ -86,8 +84,6 @@ export const forgotPasswordAPI = async (email: string) => {
   const res = await apiFetch("auth/forgot-password", { method: "POST", body: JSON.stringify({ email }) });
   return { success: res.ok, status: res.status };
 };
-
-// --- HOME & SHOP ENDPOINTS ---
 
 export const getDeals = async (lat: number, lng: number, category?: string, limit = 8, skip = 0): Promise<ProductSectionResponse> => {
   const query = new URLSearchParams({ user_lat: lat.toString(), user_lng: lng.toString(), limit: limit.toString(), skip: skip.toString() });
@@ -142,14 +138,6 @@ export const recordProductView = async (productId: string, shopId: string): Prom
   await apiFetch(`record-view/${productId}?shop_id=${shopId}`, { method: "POST" });
 };
 
-export const addToCartAPI = async (productId: string, userId: string): Promise<{ success: boolean; product: Product }> => {
-  const res = await apiFetch("cart/add-item", {
-    method: "POST",
-    body: JSON.stringify({ product_id: productId, user_id: userId })
-  });
-  return res.json();
-};
-
 export const askAvailability = async (productId: string, userId: string): Promise<void> => {
   await apiFetch("ask-availability", {
     method: "POST",
@@ -171,8 +159,6 @@ export const recordLiveFindView = async (postId: string) => {
   await apiFetch(`live-finds/${postId}/view`, { method: "POST" });
 };
 
-// --- OWNER ENDPOINTS (This was missing!) ---
-
 export const getDashboardMetrics = async (ownerId: string) => {
   const res = await apiFetch(`owner/dashboard-metrics?owner_id=${ownerId}`);
   if (res.ok) return res.json();
@@ -181,12 +167,6 @@ export const getDashboardMetrics = async (ownerId: string) => {
 
 export const getShopPerformance = async (ownerId: string) => {
   const res = await apiFetch(`owner/shop-performance?owner_id=${ownerId}`);
-  if (res.ok) return res.json();
-  return null;
-};
-
-export const getStoreDescription = async () => {
-  const res = await apiFetch("owner/store-description");
   if (res.ok) return res.json();
   return null;
 };
@@ -201,4 +181,99 @@ export const getUnreadNotificationCount = async () => {
   const res = await apiFetch("notifications/unread-count");
   if (res.ok) return res.json();
   return { unreadCount: 0 };
+};
+
+export const addShop = async (data: any) => {
+  const res = await apiFetch("add-shop", { method: "POST", body: JSON.stringify(data) });
+  if (res.ok) {
+    const auth = await res.json();
+    if (auth.access_token) setToken(auth.access_token);
+    return { success: true };
+  }
+  return { success: false, status: res.status };
+};
+
+export const checkoutCart = async (cartData: CartItem[], userLat?: number, userLng?: number, reserveAmount: number = 10) => {
+  const query = new URLSearchParams();
+  if (userLat) query.append("user_lat", userLat.toString());
+  if (userLng) query.append("user_lng", userLng.toString());
+  query.append("reserve_amount", reserveAmount.toString());
+
+  const res = await apiFetch(`checkout-cart/?${query.toString()}`, {
+    method: "POST",
+    body: JSON.stringify(cartData)
+  });
+
+  if (res.status === 402) return { success: false, status: 402, data: null, error: "Insufficient coins" };
+
+  if (res.ok) {
+    const data: CheckoutResponse = await res.json();
+    return { success: true, status: res.status, data, error: null };
+  }
+  
+  let errorDetail = "Could not reserve right now. Please try again.";
+  try {
+    const errorData = await res.json();
+    if (errorData.detail) errorDetail = typeof errorData.detail === 'string' ? errorData.detail : JSON.stringify(errorData.detail);
+  } catch (e) {}
+  
+  return { success: false, status: res.status, data: null, error: errorDetail };
+};
+
+export const markGeofencedPickup = async (data: { user_id: string; shop_id: string; items_count: number; order_id?: string }) => {
+  const res = await apiFetch("customer/mark-pickup", { method: "POST", body: JSON.stringify(data) });
+  if (res.ok) {
+    const result = await res.json();
+    return { success: true, data: result };
+  }
+  return { success: false, status: res.status };
+};
+
+export const getActivePickups = async (userId: string) => {
+  const res = await apiFetch(`customer/active-pickups?user_id=${userId}`);
+  if (res.ok) return res.json();
+  return { active_pickups: [] };
+};
+
+// --- MY SHOP ENDPOINTS ---
+
+export const getOwnerProducts = async (ownerId: string): Promise<{ products: any[] }> => {
+  const res = await apiFetch(`get-products/?owner_id=${ownerId}`);
+  return res.json();
+};
+
+export const deleteProduct = async (productId: string) => {
+  const res = await apiFetch(`delete-product/${productId}`, { method: "DELETE" });
+  return res.ok;
+};
+
+export const updateProduct = async (productId: string, data: any) => {
+  const res = await apiFetch(`update-product/${productId}`, { method: "PUT", body: JSON.stringify(data) });
+  return res.ok;
+};
+
+export const updateStock = async (productId: string, inStock: boolean) => {
+  const res = await apiFetch(`update-product/${productId}`, { method: "PUT", body: JSON.stringify({ inStock }) });
+  return res.ok;
+};
+
+export const setPromotion = async (productId: string, data: any) => {
+  const res = await apiFetch(`products/${productId}/promotion`, { method: "PUT", body: JSON.stringify(data) });
+  return res.ok;
+};
+
+export const removePromotion = async (productId: string) => {
+  const res = await apiFetch(`products/${productId}/promotion`, { method: "DELETE" });
+  return res.ok;
+};
+
+export const getStoreDescription = async () => {
+  const res = await apiFetch("owner/store-description");
+  if (res.ok) return res.json();
+  return { phone: "", description: "" };
+};
+
+export const saveStoreDescription = async (data: { description: string, phone?: string }) => {
+  const res = await apiFetch("owner/store-description", { method: "PUT", body: JSON.stringify(data) });
+  return res.ok;
 };

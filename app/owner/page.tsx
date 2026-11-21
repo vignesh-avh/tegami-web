@@ -70,7 +70,7 @@ export default function OwnerDashboard() {
   const statusTextColor = isLowVisibility ? "text-red-600" : isVerified ? "text-green-600" : "text-orange-600";
 
   return (
-    <div className="min-h-screen bg-[#F6F6F6] pb-24">
+    <div className="min-h-screen bg-[#F6F6F6] pb-32">
       <ProfileSidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
 
       {/* HEADER */}

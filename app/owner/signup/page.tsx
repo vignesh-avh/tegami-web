@@ -49,7 +49,7 @@ export default function OwnerSignup() {
       email: form.email.trim(),
       city: form.city.trim(),
       password: form.password,
-      role: "owner",
+      role: "owner", // HARDCODED OWNER ROLE
       mobileNumber: form.mobileNumber
     });
     setIsLoading(false);
@@ -89,12 +89,13 @@ export default function OwnerSignup() {
     if (!tempToken) return;
 
     setToken(tempToken);
-    router.push("/owner");
+    // GUARANTEED ROUTE TO ONBOARDING
+    router.push("/owner/onboarding");
   };
 
   return (
     <div className="min-h-screen bg-[#F5F5F5] flex flex-col px-6 py-8">
-      <Link href="/" className="text-avPrimary font-bold mb-8 text-left text-sm">← Back to Home</Link>
+      <Link href="/welcome" className="text-avPrimary font-bold mb-8 text-left text-sm">← Back</Link>
 
       <h1 className="text-2xl font-semibold text-center mb-2 text-black">Create your Shop account</h1>
       <p className="text-gray-500 text-center mb-8 text-sm">Set up your account to manage your shop.</p>
@@ -134,9 +135,7 @@ export default function OwnerSignup() {
       <div className="mt-6">
         <label className="flex items-start space-x-2 cursor-pointer">
           <input type="checkbox" checked={agreedToTerms} onChange={e => { setAgreedToTerms(e.target.checked); setTermsError(false); }} className="mt-1 w-4 h-4 text-avPrimary" />
-          <span className="text-sm text-gray-600">
-            I agree to the <a href="#" className="text-avPrimary font-bold">Terms of Services</a>
-          </span>
+          <span className="text-sm text-gray-600">I agree to the Terms of Services</span>
         </label>
         {termsError && <p className="text-red-500 text-xs mt-1 ml-6">Please agree to the Terms to continue.</p>}
       </div>
@@ -148,16 +147,13 @@ export default function OwnerSignup() {
           </button>
         ) : (
           <button onClick={completeSignup} disabled={isLoading || !isOtpVerified} className={`bg-avSecondary text-black rounded-2xl h-14 font-bold w-full ${!isOtpVerified ? 'opacity-50' : ''}`}>
-            {isLoading ? "Creating account..." : "Complete Signup"}
+            {isLoading ? "Creating..." : "Complete Signup"}
           </button>
         )}
       </div>
 
       <div className="mt-8 text-center text-sm text-gray-500">
-        Already have an account?{" "}
-        <Link href="/owner/login" className="text-avPrimary font-bold">
-          Log In
-        </Link>
+        Already have an account? <Link href="/owner/login" className="text-avPrimary font-bold">Log In</Link>
       </div>
     </div>
   );
