@@ -22,14 +22,23 @@ export const addItem = (
   shopLat?: number, shopLng?: number, shopPickups?: number, shopReports?: number
 ) => {
   const cart = getCart(userId);
-  const existing = cart.find(item => item.product_id === product.id);
+  
+  // CRITICAL FIX: Fallback to _id or product_id if id is missing
+  const pId = product.id || (product as any)._id || (product as any).product_id;
+  
+  if (!pId) {
+    console.error("Product ID is undefined. Cannot add to cart.", product);
+    return;
+  }
+
+  const existing = cart.find(item => item.product_id === pId);
   
   if (existing) {
     if (existing.quantity < MAX_QUANTITY) existing.quantity++;
   } else {
     cart.push({
-      product_id: product.id,
-      product_name: product.name,
+      product_id: pId,
+      product_name: product.name || (product as any).product_name || "Item",
       price: product.price,
       unit: product.unit,
       shop_id: shopId,

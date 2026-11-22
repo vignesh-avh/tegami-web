@@ -13,6 +13,7 @@ export default function OwnerSignup() {
   const [signupError, setSignupError] = useState<string | null>(null);
   const [signupMessage, setSignupMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   
   const [isOtpSent, setIsOtpSent] = useState(false);
   const [isOtpVerified, setIsOtpVerified] = useState(false);
@@ -21,6 +22,7 @@ export default function OwnerSignup() {
 
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [termsError, setTermsError] = useState(false);
+  const [passwordVisible, setPasswordVisible] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -49,7 +51,7 @@ export default function OwnerSignup() {
       email: form.email.trim(),
       city: form.city.trim(),
       password: form.password,
-      role: "owner", // HARDCODED OWNER ROLE
+      role: "owner",
       mobileNumber: form.mobileNumber
     });
     setIsLoading(false);
@@ -89,71 +91,211 @@ export default function OwnerSignup() {
     if (!tempToken) return;
 
     setToken(tempToken);
-    // GUARANTEED ROUTE TO ONBOARDING
     router.push("/owner/onboarding");
   };
 
+  const handleGoogleSignup = () => {
+    if (!agreedToTerms) {
+      setTermsError(true);
+      return;
+    }
+    setIsGoogleLoading(true);
+    setTimeout(() => {
+        setIsGoogleLoading(false);
+    }, 2000);
+  };
+
+  const EyeIcon = () => (
+    <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+    </svg>
+  );
+
+  const EyeOffIcon = () => (
+    <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+    </svg>
+  );
+
   return (
-    <div className="min-h-screen bg-[#F5F5F5] flex flex-col px-6 py-8">
-      <Link href="/welcome" className="text-avPrimary font-bold mb-8 text-left text-sm">← Back</Link>
+    <div className="min-h-screen bg-[#F5F5F5] flex justify-center py-10 md:py-16 px-6 font-sans">
+      <div className="w-full max-w-md flex flex-col relative pb-6">
+        
+        <Link href="/welcome" className="text-[#6200EE] font-bold mb-8 text-left text-sm hover:underline">
+          ← Back
+        </Link>
 
-      <h1 className="text-2xl font-semibold text-center mb-2 text-black">Create your Shop account</h1>
-      <p className="text-gray-500 text-center mb-8 text-sm">Set up your account to manage your shop.</p>
+        <h1 className="text-[24px] leading-[30px] font-semibold text-center mb-1.5 text-[#121212]">Create your Shop account</h1>
+        <p className="text-[#757575] text-center mb-7 text-[14px]">Set up your account to manage your shop.</p>
 
-      <div className="space-y-4">
-        <div>
-          <input name="fullName" placeholder="Full Name" value={form.fullName} onChange={handleChange} disabled={isOtpSent} className={`bg-gray-200/50 rounded-2xl px-4 py-4 w-full outline-none ${errors.fullName ? 'border border-red-500' : ''}`} />
-          {errors.fullName && <p className="text-red-500 text-xs mt-1 ml-2">{errors.fullName}</p>}
+        <div className="flex flex-col gap-3">
+          <div>
+            <input 
+              name="fullName" 
+              placeholder="Full Name" 
+              value={form.fullName} 
+              onChange={handleChange} 
+              disabled={isOtpSent} 
+              className={`h-[56px] bg-[#E0E0E0]/30 rounded-[16px] px-4 w-full outline-none text-[16px] text-[#121212] transition-all disabled:opacity-50 ${errors.fullName ? 'border border-[#B00020]' : 'border border-transparent focus:border-[#6200EE]/50'}`} 
+            />
+            {errors.fullName && <p className="text-[#B00020] text-[12px] mt-1.5 ml-2">{errors.fullName}</p>}
+          </div>
+          
+          <div>
+            <input 
+              name="email" 
+              type="email" 
+              placeholder="Email Address" 
+              value={form.email} 
+              onChange={handleChange} 
+              disabled={isOtpSent} 
+              className={`h-[56px] bg-[#E0E0E0]/30 rounded-[16px] px-4 w-full outline-none text-[16px] text-[#121212] transition-all disabled:opacity-50 ${errors.email ? 'border border-[#B00020]' : 'border border-transparent focus:border-[#6200EE]/50'}`} 
+            />
+            {errors.email && <p className="text-[#B00020] text-[12px] mt-1.5 ml-2">{errors.email}</p>}
+          </div>
+
+          <div>
+            <input 
+              name="city" 
+              placeholder="City" 
+              value={form.city} 
+              onChange={handleChange} 
+              disabled={isOtpSent} 
+              className={`h-[56px] bg-[#E0E0E0]/30 rounded-[16px] px-4 w-full outline-none text-[16px] text-[#121212] transition-all disabled:opacity-50 ${errors.city ? 'border border-[#B00020]' : 'border border-transparent focus:border-[#6200EE]/50'}`} 
+            />
+            {errors.city && <p className="text-[#B00020] text-[12px] mt-1.5 ml-2">{errors.city}</p>}
+          </div>
+
+          <div>
+            <div className="relative w-full">
+              <input 
+                name="password" 
+                type={passwordVisible ? "text" : "password"} 
+                placeholder="Password" 
+                value={form.password} 
+                onChange={handleChange} 
+                disabled={isOtpSent} 
+                className={`h-[56px] bg-[#E0E0E0]/30 rounded-[16px] px-4 pr-12 w-full outline-none text-[16px] text-[#121212] transition-all disabled:opacity-50 ${errors.password ? 'border border-[#B00020]' : 'border border-transparent focus:border-[#6200EE]/50'}`} 
+              />
+              <button 
+                type="button" 
+                onClick={() => setPasswordVisible(!passwordVisible)} 
+                className="absolute right-4 top-1/2 -translate-y-1/2 p-1"
+                disabled={isOtpSent}
+              >
+                {passwordVisible ? <EyeIcon /> : <EyeOffIcon />}
+              </button>
+            </div>
+            {errors.password ? (
+              <p className="text-[#B00020] text-[12px] mt-1.5 ml-2">{errors.password}</p>
+            ) : (
+              <p className="text-[#757575] text-[12px] mt-1.5 ml-2">Min 8 chars, 1 uppercase, 1 number</p>
+            )}
+          </div>
         </div>
-        <div>
-          <input name="email" type="email" placeholder="Email Address" value={form.email} onChange={handleChange} disabled={isOtpSent} className={`bg-gray-200/50 rounded-2xl px-4 py-4 w-full outline-none ${errors.email ? 'border border-red-500' : ''}`} />
-          {errors.email && <p className="text-red-500 text-xs mt-1 ml-2">{errors.email}</p>}
-        </div>
-        <div>
-          <input name="city" placeholder="City" value={form.city} onChange={handleChange} disabled={isOtpSent} className={`bg-gray-200/50 rounded-2xl px-4 py-4 w-full outline-none ${errors.city ? 'border border-red-500' : ''}`} />
-          {errors.city && <p className="text-red-500 text-xs mt-1 ml-2">{errors.city}</p>}
-        </div>
-        <div>
-          <input name="password" type="password" placeholder="Password" value={form.password} onChange={handleChange} disabled={isOtpSent} className={`bg-gray-200/50 rounded-2xl px-4 py-4 w-full outline-none ${errors.password ? 'border border-red-500' : ''}`} />
-          {errors.password && <p className="text-red-500 text-xs mt-1 ml-2">{errors.password}</p>}
-        </div>
-      </div>
 
-      {signupMessage && <p className="text-avPrimary text-sm mt-4">{signupMessage}</p>}
-      {signupError && <p className="text-red-500 text-sm mt-4">{signupError}</p>}
+        {signupMessage && <p className="text-[#6200EE] text-[14px] mt-2">{signupMessage}</p>}
+        {signupError && <p className="text-[#B00020] text-[14px] mt-2">{signupError}</p>}
 
-      {isOtpSent && !isOtpVerified && (
-        <div className="mt-6 space-y-4">
-          <input placeholder="Enter 6-Digit OTP" value={otp} onChange={e => setOtp(e.target.value)} maxLength={6} className={`bg-gray-200/50 rounded-2xl px-4 py-4 w-full outline-none ${errors.otp ? 'border border-red-500' : ''}`} />
-          {errors.otp && <p className="text-red-500 text-xs ml-2">{errors.otp}</p>}
-          <button onClick={handleVerifyOtp} disabled={isLoading} className="bg-avPrimary text-white rounded-2xl h-14 font-bold w-full">
-            {isLoading ? "Verifying..." : "Verify Code"}
-          </button>
-        </div>
-      )}
-
-      <div className="mt-6">
-        <label className="flex items-start space-x-2 cursor-pointer">
-          <input type="checkbox" checked={agreedToTerms} onChange={e => { setAgreedToTerms(e.target.checked); setTermsError(false); }} className="mt-1 w-4 h-4 text-avPrimary" />
-          <span className="text-sm text-gray-600">I agree to the Terms of Services</span>
-        </label>
-        {termsError && <p className="text-red-500 text-xs mt-1 ml-6">Please agree to the Terms to continue.</p>}
-      </div>
-
-      <div className="mt-6">
-        {!isOtpSent ? (
-          <button onClick={requestOtp} disabled={isLoading} className="bg-avSecondary text-black rounded-2xl h-14 font-bold w-full">
-            {isLoading ? "Sending OTP..." : "Get OTP"}
-          </button>
-        ) : (
-          <button onClick={completeSignup} disabled={isLoading || !isOtpVerified} className={`bg-avSecondary text-black rounded-2xl h-14 font-bold w-full ${!isOtpVerified ? 'opacity-50' : ''}`}>
-            {isLoading ? "Creating..." : "Complete Signup"}
-          </button>
+        {isOtpSent && !isOtpVerified && (
+          <div className="mt-4 flex flex-col gap-4">
+            <div>
+              <input 
+                placeholder="Enter 6-Digit OTP" 
+                value={otp} 
+                onChange={e => setOtp(e.target.value)} 
+                maxLength={6} 
+                className={`h-[56px] bg-[#E0E0E0]/30 rounded-[16px] px-4 w-full outline-none text-[16px] text-[#121212] transition-all ${errors.otp ? 'border border-[#B00020]' : 'border border-transparent focus:border-[#6200EE]/50'}`} 
+              />
+              {errors.otp && <p className="text-[#B00020] text-[12px] mt-1.5 ml-2">{errors.otp}</p>}
+            </div>
+            <button 
+              onClick={handleVerifyOtp} 
+              disabled={isLoading || isOtpVerified} 
+              className="bg-[#6200EE] text-white rounded-[16px] h-[56px] font-bold text-[16px] w-full transition-transform active:scale-[0.98] disabled:opacity-50 flex items-center justify-center"
+            >
+              {isLoading ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  Verifying...
+                </div>
+              ) : "Verify & Continue"}
+            </button>
+          </div>
         )}
-      </div>
 
-      <div className="mt-8 text-center text-sm text-gray-500">
-        Already have an account? <Link href="/owner/login" className="text-avPrimary font-bold">Log In</Link>
+        <div className="mt-6">
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input 
+              type="checkbox" 
+              checked={agreedToTerms} 
+              onChange={e => { setAgreedToTerms(e.target.checked); setTermsError(false); }} 
+              className={`mt-0.5 w-[18px] h-[18px] rounded border-gray-300 text-[#6200EE] focus:ring-[#6200EE] ${termsError ? 'border-[#B00020] ring-1 ring-[#B00020]' : ''}`} 
+            />
+            <span className="text-[14px] text-[#757575] leading-[20px]">
+              I agree to the{" "}
+              <a href="https://sites.google.com/view/teg-gami/terms-of-service?authuser=0" target="_blank" rel="noopener noreferrer" className="text-[#6200EE] font-bold hover:underline">Terms of Services</a>
+              {" "}and{" "}
+              <a href="https://sites.google.com/view/teg-gami/privacy-policy?authuser=0" target="_blank" rel="noopener noreferrer" className="text-[#6200EE] font-bold hover:underline">Privacy Policy</a>
+            </span>
+          </label>
+          {termsError && <p className="text-[#B00020] text-[12px] mt-1.5 ml-[26px]">Please agree to the Terms & Privacy Policy to continue.</p>}
+        </div>
+
+        <div className="mt-3">
+          {!isOtpSent ? (
+            <button 
+              onClick={requestOtp} 
+              disabled={isLoading || isGoogleLoading} 
+              className="bg-[#03DAC5] text-black rounded-[16px] h-[56px] font-bold text-[16px] w-full transition-transform active:scale-[0.98] disabled:opacity-50 flex items-center justify-center"
+            >
+              {isLoading ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
+                  Sending OTP...
+                </div>
+              ) : "Get OTP"}
+            </button>
+          ) : (
+            <button 
+              onClick={completeSignup} 
+              disabled={isLoading || !isOtpVerified || isGoogleLoading} 
+              className={`bg-[#03DAC5] text-black rounded-[16px] h-[56px] font-bold text-[16px] w-full transition-transform active:scale-[0.98] flex items-center justify-center ${!isOtpVerified ? 'opacity-50' : ''}`}
+            >
+              {isLoading ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
+                  Creating account...
+                </div>
+              ) : "Complete Signup"}
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center py-4 space-x-4">
+          <div className="flex-1 h-px bg-[#E0E0E0]/50"></div>
+          <span className="text-[#757575] text-[14px]">or</span>
+          <div className="flex-1 h-px bg-[#E0E0E0]/50"></div>
+        </div>
+
+        <button 
+          type="button"
+          onClick={handleGoogleSignup}
+          disabled={isLoading || isGoogleLoading}
+          className="border border-[#757575]/50 rounded-[16px] h-[56px] font-medium text-[16px] w-full text-[#121212] bg-transparent flex items-center justify-center transition-all hover:bg-gray-50 active:scale-[0.98] disabled:opacity-50"
+        >
+          {isGoogleLoading ? (
+            <div className="flex items-center gap-2">
+              <div className="w-5 h-5 border-2 border-[#121212] border-t-transparent rounded-full animate-spin"></div>
+              Signing up...
+            </div>
+          ) : "Continue with Google"}
+        </button>
+
+        <div className="mt-5 text-center text-[14px] text-[#757575]">
+          Already have an account? <Link href="/owner/login" className="text-[#6200EE] font-bold hover:underline">Log In</Link>
+        </div>
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 import { 
   HomeProduct, ProductSectionResponse, ShopSearchResponse, ShopDetailsResponse, 
-  UserDetails, AuthResponse, LoginRequest, SignupRequest, OwnerNotification, Product, CartItem, CheckoutResponse
+  UserDetails, AuthResponse, LoginRequest, SignupRequest, OwnerNotification, Product, CartItem, CheckoutResponse,
+  MultiShopRouteRequest, MultiShopRouteResponse
 } from "./types";
 
 const BASE_URL = "https://api.avapp.in/";
@@ -120,6 +121,17 @@ export const getNearbyShops = async (lat: number, lng: number, category?: string
   return res.json();
 };
 
+export const searchShops = async (productName: string, lat: number, lng: number, inStock: boolean = true): Promise<ShopSearchResponse> => {
+  const query = new URLSearchParams({ 
+    product_name: productName, 
+    user_lat: lat.toString(), 
+    user_lng: lng.toString(),
+    in_stock: inStock.toString()
+  });
+  const res = await apiFetch(`get-shops?${query.toString()}`);
+  return res.json();
+};
+
 export const getShopDetails = async (shopId: string): Promise<ShopDetailsResponse> => {
   const res = await apiFetch(`get-shop?id=${shopId}`);
   return res.json();
@@ -157,6 +169,51 @@ export const toggleLiveFindLike = async (postId: string) => {
 
 export const recordLiveFindView = async (postId: string) => {
   await apiFetch(`live-finds/${postId}/view`, { method: "POST" });
+};
+
+export const getMyFinds = async () => {
+  const res = await apiFetch("live-finds/my-finds");
+  return res.ok ? res.json() : { posts: [] };
+};
+
+export const getCoinHistory = async (userId: string, timeRange: string = "last30") => {
+  const res = await apiFetch(`user/coin-history?user_id=${userId}&timeRange=${timeRange}`);
+  return res.ok ? res.json() : { transactions: [] };
+};
+
+export const createLiveFind = async (
+  imageFile: File,
+  shopId: string,
+  price: number | null,
+  description: string | null,
+  expiresInHours: number,
+  userLat: number,
+  userLng: number
+) => {
+  const formData = new FormData();
+  formData.append("image", imageFile);
+  formData.append("shop_id", shopId);
+  if (price !== null) formData.append("price", price.toString());
+  if (description) formData.append("description", description);
+  formData.append("expires_in_hours", expiresInHours.toString());
+  formData.append("user_lat", userLat.toString());
+  formData.append("user_lng", userLng.toString());
+
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${BASE_URL}live-finds/create`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+  return res.ok ? res.json() : null;
+};
+
+export const deleteLiveFind = async (postId: string) => {
+  const res = await apiFetch(`live-finds/${postId}`, { method: "DELETE" });
+  return res.ok;
 };
 
 export const getDashboardMetrics = async (ownerId: string) => {
@@ -277,3 +334,78 @@ export const saveStoreDescription = async (data: { description: string, phone?: 
   const res = await apiFetch("owner/store-description", { method: "PUT", body: JSON.stringify(data) });
   return res.ok;
 };
+
+// --- MULTI-SHOP ROUTE & CONSENT ENDPOINTS ---
+
+export const getMultiShopRoute = async (request: MultiShopRouteRequest): Promise<MultiShopRouteResponse | null> => {
+  const res = await apiFetch("customer/get-multi-shop-route", {
+    method: "POST",
+    body: JSON.stringify(request)
+  });
+  if (res.ok) return res.json();
+  return null;
+};
+
+export const recordConsent = async (userId: string, consentType: string, accepted: boolean) => {
+  const res = await apiFetch("record-consent", {
+    method: "POST",
+    body: JSON.stringify({ user_id: userId, consent_type: consentType, accepted })
+  });
+  return res.ok;
+};
+
+// --- NAVIGATION BROADCAST ENDPOINTS ---
+export const broadcastLocation = async (data: {
+  customer_id: string;
+  customer_name: string;
+  shop_ids: string[];
+  latitude: number;
+  longitude: number;
+  eta: string;
+  distance: number;
+  route_polyline?: string | null;
+  accuracy?: number | null;
+  heading?: number | null;
+}) => {
+  const res = await apiFetch("customer/broadcast-location", { method: "POST", body: JSON.stringify(data) });
+  return res.ok;
+};
+
+export const cancelNavigation = async (userId: string, orderId?: string) => {
+  const res = await apiFetch("customer/cancel-navigation", {
+    method: "POST",
+    body: JSON.stringify({ user_id: userId, order_id: orderId })
+  });
+  return res.ok;
+};
+
+export const getNavigationRoute = async (data: { user_lat: number, user_lng: number, shop_id: string }) => {
+  const res = await apiFetch("customer/get-navigation-route", {
+    method: "POST",
+    body: JSON.stringify(data)
+  });
+  return res.ok ? res.json() : null;
+};
+
+export const getAllShopLocations = async () => {
+  const res = await apiFetch("all-shop-locations");
+  return res.ok ? res.json() : null;
+};
+
+// --- REFERRAL ENDPOINTS ---
+export const applyReferral = async (customerId: string, referralCode: string) => {
+  const res = await apiFetch("referral/apply-referral", { 
+    method: "POST", 
+    body: JSON.stringify({ customer_id: customerId, referral_code: referralCode }) 
+  });
+  return res.ok ? res.json() : null;
+};
+
+export const skipReferral = async (userId: string) => {
+  const res = await apiFetch("referral/skip-referral", { 
+    method: "POST", 
+    body: JSON.stringify({ user_id: userId }) 
+  });
+  return res.ok ? res.json() : null;
+};
+

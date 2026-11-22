@@ -41,6 +41,7 @@ export default function OnboardingScreen() {
   };
 
   const fetchLocation = () => {
+    setLocationError(null);
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
@@ -50,7 +51,8 @@ export default function OnboardingScreen() {
         },
         () => {
           setLocationError("Could not get location. Enable GPS.");
-        }
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
       );
     } else {
       setLocationError("Geolocation is not supported by this browser.");
@@ -101,45 +103,111 @@ export default function OnboardingScreen() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F5F5F5] flex flex-col px-6 py-8">
-      <h1 className="text-2xl font-bold text-center mb-2 text-black">Set Up Your Shop</h1>
-      <p className="text-gray-500 text-center mb-8 text-sm">Let's get your business online.</p>
+    <div className="min-h-screen bg-[#F5F5F5] flex justify-center py-10 md:py-16 px-6 font-sans">
+      <div className="w-full max-w-md flex flex-col relative pb-10">
+        
+        {/* HEADER */}
+        <h1 className="text-[28px] leading-[34px] font-bold text-center mb-2 text-[#121212]">
+          Set Up Your Shop
+        </h1>
+        <p className="text-[16px] text-[#757575] text-center mb-8">
+          Let's get your business online.
+        </p>
 
-      <div className="space-y-4">
-        <div>
-          <input placeholder="Shop Name" value={shopName} onChange={e => setShopName(e.target.value)} className={`bg-gray-200/50 rounded-xl px-4 py-4 w-full outline-none ${errors.shopName ? 'border border-red-500' : ''}`} />
-          {errors.shopName && <p className="text-red-500 text-xs mt-1 ml-2">{errors.shopName}</p>}
+        {/* FORM INPUTS */}
+        <div className="flex flex-col gap-4">
+          
+          <div>
+            <input 
+              placeholder="Shop Name" 
+              value={shopName} 
+              onChange={e => setShopName(e.target.value)} 
+              className={`h-[56px] bg-[#E0E0E0]/30 rounded-[12px] px-4 w-full outline-none text-[16px] text-[#121212] transition-all ${errors.shopName ? 'border border-[#B00020]' : 'border border-transparent focus:border-[#6200EE]/50'}`} 
+            />
+            {errors.shopName && <p className="text-[#B00020] text-[12px] mt-1.5 ml-2">{errors.shopName}</p>}
+          </div>
+
+          <div>
+            <input 
+              placeholder="Mobile Number" 
+              value={mobileNumber} 
+              onChange={e => handleMobileChange(e.target.value)} 
+              maxLength={10}
+              type="tel"
+              className={`h-[56px] bg-[#E0E0E0]/30 rounded-[12px] px-4 w-full outline-none text-[16px] text-[#121212] transition-all ${errors.mobileNumber ? 'border border-[#B00020]' : 'border border-transparent focus:border-[#6200EE]/50'}`} 
+            />
+            {errors.mobileNumber ? (
+              <p className="text-[#B00020] text-[12px] mt-1.5 ml-2">{errors.mobileNumber}</p>
+            ) : (
+              <p className="text-[#757575] text-[12px] mt-1.5 ml-2">Enter a 10-digit mobile number.</p>
+            )}
+          </div>
+
+          <div>
+            <input 
+              placeholder="Initial Rating (0-5)" 
+              value={rating} 
+              onChange={e => handleRatingChange(e.target.value)} 
+              type="number" 
+              step="0.1" 
+              className={`h-[56px] bg-[#E0E0E0]/30 rounded-[12px] px-4 w-full outline-none text-[16px] text-[#121212] transition-all ${errors.rating ? 'border border-[#B00020]' : 'border border-transparent focus:border-[#6200EE]/50'}`} 
+            />
+            {errors.rating ? (
+              <p className="text-[#B00020] text-[12px] mt-1.5 ml-2">{errors.rating}</p>
+            ) : (
+              <p className="text-[#757575] text-[12px] mt-1.5 ml-2">Enter a rating between 0 and 5.</p>
+            )}
+          </div>
+
+          <div>
+            <input 
+              placeholder="Store Type (e.g. Grocery)" 
+              value={storeType} 
+              onChange={e => setStoreType(e.target.value)} 
+              className="h-[56px] bg-[#E0E0E0]/30 rounded-[12px] px-4 w-full outline-none text-[16px] text-[#121212] border border-transparent focus:border-[#6200EE]/50 transition-all" 
+            />
+          </div>
         </div>
-        <div>
-          <input placeholder="Mobile Number" value={mobileNumber} onChange={e => handleMobileChange(e.target.value)} maxLength={10} className={`bg-gray-200/50 rounded-xl px-4 py-4 w-full outline-none ${errors.mobileNumber ? 'border border-red-500' : ''}`} />
-          {errors.mobileNumber ? <p className="text-red-500 text-xs mt-1 ml-2">{errors.mobileNumber}</p> : <p className="text-gray-500 text-xs mt-1 ml-2">Enter a 10-digit mobile number.</p>}
+
+        {/* DIVIDER */}
+        <div className="my-6 border-t border-[#E0E0E0]/50"></div>
+
+        {/* LOCATION SECTION */}
+        <div className="flex flex-col items-center">
+          <h2 className="text-[16px] font-semibold text-[#121212]">Shop Location</h2>
+          
+          {locationError && (
+            <p className="text-[#B00020] text-[12px] mt-1 text-center">{locationError}</p>
+          )}
+          
+          {latitude !== null && longitude !== null && (
+            <p className="text-[#10B981] font-bold text-[14px] mt-1">✅ Location Captured!</p>
+          )}
+
+          <button 
+            onClick={fetchLocation} 
+            className="w-full h-[56px] border border-[#757575]/50 rounded-[12px] text-[16px] font-medium mt-3 text-[#6200EE] bg-transparent transition-all hover:bg-[#6200EE]/5 active:scale-[0.98] flex items-center justify-center"
+          >
+            Use Current Location
+          </button>
         </div>
-        <div>
-          <input placeholder="Initial Rating (0-5)" value={rating} onChange={e => handleRatingChange(e.target.value)} type="number" step="0.1" className={`bg-gray-200/50 rounded-xl px-4 py-4 w-full outline-none ${errors.rating ? 'border border-red-500' : ''}`} />
-          {errors.rating ? <p className="text-red-500 text-xs mt-1 ml-2">{errors.rating}</p> : <p className="text-gray-500 text-xs mt-1 ml-2">Enter a rating between 0 and 5.</p>}
-        </div>
-        <div>
-          <input placeholder="Store Type (e.g. Grocery)" value={storeType} onChange={e => setStoreType(e.target.value)} className="bg-gray-200/50 rounded-xl px-4 py-4 w-full outline-none" />
-        </div>
+
+        {/* SUBMIT BUTTON */}
+        <button 
+          onClick={handleSubmit} 
+          disabled={isSubmitting} 
+          className="w-full h-[56px] bg-[#03DAC5] text-black rounded-[12px] font-bold text-[16px] mt-6 transition-transform active:scale-[0.98] disabled:opacity-50 flex items-center justify-center"
+        >
+          {isSubmitting ? (
+            <div className="flex items-center gap-2">
+              <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
+              Saving...
+            </div>
+          ) : "Save & Finish"}
+        </button>
+        
+        {submitError && <p className="text-[#B00020] text-center mt-4 text-[14px]">{submitError}</p>}
       </div>
-
-      <div className="my-8 border-t border-gray-300"></div>
-
-      <div className="text-center space-y-2">
-        <h2 className="text-lg font-semibold text-black">Shop Location</h2>
-        {locationError && <p className="text-red-500 text-sm">{locationError}</p>}
-        {latitude && longitude && <p className="text-green-500 font-bold text-sm">✅ Location Captured!</p>}
-      </div>
-
-      <button onClick={fetchLocation} className="w-full border border-gray-400 rounded-xl h-14 font-medium mt-4 text-avPrimary bg-white">
-        Use Current Location
-      </button>
-
-      <button onClick={handleSubmit} disabled={isSubmitting} className="w-full bg-avSecondary text-black rounded-xl h-14 font-bold mt-8 disabled:opacity-50">
-        {isSubmitting ? "Saving..." : "Save & Finish"}
-      </button>
-      
-      {submitError && <p className="text-red-500 text-center mt-4 text-sm">{submitError}</p>}
     </div>
   );
 }

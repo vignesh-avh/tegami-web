@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useRef, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { getUserIdFromToken } from "../../lib/api";
 import { 
   getOwnerProducts, deleteProduct, updateProduct, updateStock, 
@@ -27,13 +27,24 @@ const getUpdatedLabel = (dateStr?: string) => {
   } catch { return ""; }
 };
 
-export default function MyShopScreen() {
+function MyShopContent() {
   const router = useRouter();
   const userId = getUserIdFromToken();
+  const searchParams = useSearchParams();
+  const initialSection = searchParams.get("section") || "in_stock";
 
   const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
-  const [currentSection, setCurrentSection] = useState("in_stock");
+  const [currentSection, setCurrentSection] = useState(initialSection);
+
+  // FIX: Listen for URL changes so clicking dashboard metrics updates the tab
+  useEffect(() => {
+    const sectionParam = searchParams.get("section");
+    if (sectionParam && sectionParam !== currentSection) {
+      setCurrentSection(sectionParam);
+    }
+  }, [searchParams]);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -51,10 +62,20 @@ export default function MyShopScreen() {
   const [promoForm, setPromoForm] = useState({ salePrice: "", saleDescription: "", durationDays: "7" });
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
   
+  // Image Zoom State
+  const [zoomImage, setZoomImage] = useState<string | null>(null);
+
+  // Store Description State
   const [showDescriptionDialog, setShowDescriptionDialog] = useState(false);
   const [storeDescription, setStoreDescription] = useState("");
   const [ownerPhone, setOwnerPhone] = useState("");
+  const [initialPhone, setInitialPhone] = useState("");
   const [isSavingDesc, setIsSavingDesc] = useState(false);
+  const [phoneError, setPhoneError] = useState(false);
+
+  // Camera Consent State
+  const [showCameraConsentDialog, setShowCameraConsentDialog] = useState(false);
+  const [cameraConsentGiven, setCameraConsentGiven] = useState(false);
 
   // 1. Initial Load
   useEffect(() => {
@@ -64,6 +85,10 @@ export default function MyShopScreen() {
     }
     fetchProducts();
     loadStoreDesc();
+    
+    // Check local storage for camera consent
+    const consent = localStorage.getItem(`camera_consent_${userId}`);
+    if (consent === "true") setCameraConsentGiven(true);
   }, [userId, router]);
 
   const fetchProducts = async () => {
@@ -71,11 +96,18 @@ export default function MyShopScreen() {
     setIsLoading(true);
     try {
       const res = await getOwnerProducts(userId);
-      // Map _id to id so actions work
+      
       const mappedProducts = (res.products || []).map((p: any) => ({
         ...p,
-        id: p._id || p.id || p.product_id
+        id: p._id || p.id || p.product_id,
+        name: p.product_name || p.name || "Unknown Product",
+        price: p.price || 0,
+        unit: p.unit || "per_piece",
+        category: p.category || "Others",
+        inStock: p.inStock ?? true,
+        imageUrl: p.imageUrl || (p.images && p.images.length > 0 ? p.images[0] : ""),
       }));
+
       setAllProducts(mappedProducts);
       setError(null);
     } catch (err) {
@@ -90,10 +122,11 @@ export default function MyShopScreen() {
     if (res) {
       setStoreDescription(res.description || "");
       setOwnerPhone(res.phone || "");
+      setInitialPhone(res.phone || "");
     }
   };
 
-  // 2. Filtering Logic (Exactly matches Kotlin)
+  // 2. Filtering Logic
   useEffect(() => {
     let result = allProducts;
     const query = searchQuery.toLowerCase();
@@ -116,12 +149,12 @@ export default function MyShopScreen() {
   // 3. Handlers
   const handleSearchChange = (val: string) => {
     setSearchQuery(val);
-    if (!val.trim()) return; // FIX: Replaced isBlank with trim()
+    if (!val.trim()) return;
     
-    // Auto-switch tab logic from Kotlin
     const match = allProducts.find(p => p.name.toLowerCase().includes(val.toLowerCase()));
     if (match) {
-      if (match.isOnSale) setCurrentSection("promotion");
+      const isCurrentlyOnSale = match.isOnSale === true && isSaleActive(match.saleEndDate);
+      if (isCurrentlyOnSale) setCurrentSection("promotion");
       else if (match.inStock) setCurrentSection("in_stock");
       else setCurrentSection("no_stock");
     }
@@ -135,7 +168,7 @@ export default function MyShopScreen() {
         next.delete(id);
         return next;
       });
-    }, 2000); // Highlight lasts 2 seconds
+    }, 2000);
   };
 
   const handleDelete = async () => {
@@ -143,7 +176,6 @@ export default function MyShopScreen() {
     const original = [...allProducts];
     const idToDelete = productToDelete.id;
     
-    // Optimistic update
     setAllProducts(prev => prev.filter(p => p.id !== idToDelete));
     setProductToDelete(null);
 
@@ -159,7 +191,6 @@ export default function MyShopScreen() {
     const original = [...allProducts];
     const idToUpdate = editingProductId;
     
-    // Optimistic update
     setAllProducts(prev => prev.map(p => 
       p.id === idToUpdate ? { ...p, name: editForm.name, price: parseFloat(editForm.price) || 0, unit: editForm.unit, category: editForm.category, last_updated: new Date().toISOString() } : p
     ));
@@ -185,7 +216,6 @@ export default function MyShopScreen() {
     const original = [...allProducts];
     const idToUpdate = product.id;
 
-    // Optimistic update
     setAllProducts(prev => prev.map(p => p.id === idToUpdate ? { ...p, inStock: newStatus, last_updated: new Date().toISOString() } : p));
     triggerHighlight(idToUpdate);
 
@@ -230,15 +260,27 @@ export default function MyShopScreen() {
   };
 
   const handleSaveDesc = async () => {
+    const digits = ownerPhone.replace(/\D/g, '');
+    if (digits.length < 10 || digits.length > 12) {
+      setPhoneError(true);
+      return;
+    }
+    setPhoneError(false);
     setIsSavingDesc(true);
-    const success = await saveStoreDescription({ description: storeDescription, phone: ownerPhone });
+    
+    const phoneToSend = digits !== initialPhone ? digits : undefined;
+    const success = await saveStoreDescription({ description: storeDescription, phone: phoneToSend });
+    
     setIsSavingDesc(false);
-    if (success) setShowDescriptionDialog(false);
-    else alert("Failed to save description");
+    if (success) {
+      setShowDescriptionDialog(false);
+      if (phoneToSend) setInitialPhone(phoneToSend);
+    } else {
+      alert("Failed to save description");
+    }
   };
 
   const startVoiceInput = () => {
-    // Browser Speech API implementation for the description
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
       alert("Voice typing is not supported in this browser.");
@@ -251,204 +293,260 @@ export default function MyShopScreen() {
 
     recognition.onresult = (event: any) => {
       const speechToText = event.results[0][0].transcript;
-      setStoreDescription(prev => (prev + " " + speechToText).slice(0, 300));
+      setStoreDescription(prev => (prev + " " + speechToText).trim().slice(0, 300));
     };
     recognition.start();
   };
 
-  if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-[#F5F5F5]"><div className="w-10 h-10 border-4 border-avPrimary border-t-transparent rounded-full animate-spin"></div></div>;
+  const handleAddProductClick = () => {
+    if (cameraConsentGiven) {
+      // In a real app, this would navigate to Add Product page
+      alert("Navigating to Add Product (Camera)...");
+    } else {
+      setShowCameraConsentDialog(true);
+    }
+  };
+
+  const acceptCameraConsent = () => {
+    localStorage.setItem(`camera_consent_${userId}`, "true");
+    setCameraConsentGiven(true);
+    setShowCameraConsentDialog(false);
+    alert("Navigating to Add Product (Camera)...");
+  };
+
+  if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-[#F5F5F5]"><div className="w-10 h-10 border-4 border-[#6200EE] border-t-transparent rounded-full animate-spin"></div></div>;
+
+  const inStockCount = allProducts.filter(p => p.inStock && !(p.isOnSale && isSaleActive(p.saleEndDate))).length;
+  const promoCount = allProducts.filter(p => p.isOnSale && isSaleActive(p.saleEndDate)).length;
+  const noStockCount = allProducts.filter(p => !p.inStock && !(p.isOnSale && isSaleActive(p.saleEndDate))).length;
 
   return (
-    <div className="min-h-screen bg-[#F5F5F5] pb-32 relative">
-      {/* HEADER */}
-      <div className="px-4 pt-4 pb-2">
-        <h1 className="text-xl font-bold text-black">My Products</h1>
-        <p className="text-sm text-gray-500">{filteredProducts.length} products found</p>
-      </div>
-
-      {/* SEARCH */}
-      <div className="px-4 mb-4">
-        <div className="bg-[#F1F2F4] rounded-full px-4 py-2.5 flex items-center">
-          <svg className="w-5 h-5 text-black mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-          <input 
-            type="text" 
-            placeholder="Search products in your shop..." 
-            value={searchQuery}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            className="bg-transparent w-full outline-none text-sm text-black placeholder-gray-600"
-          />
+    <div className="min-h-screen bg-[#F5F5F5] pb-32 relative font-sans">
+      
+      <div className="w-full max-w-4xl mx-auto flex flex-col">
+        {/* HEADER */}
+        <div className="px-4 pt-4 pb-2 bg-[#F5F5F5] sticky top-0 z-50">
+          <h1 className="text-[22px] font-bold text-black leading-tight">My Shop</h1>
+          <p className="text-[12px] text-[#757575]">{filteredProducts.length} products found</p>
         </div>
-      </div>
 
-      {/* TABS */}
-      <div className="px-4 flex border-b border-gray-200">
-        {[
-          { key: "in_stock", label: `In Stock (${allProducts.filter(p => p.inStock && !isSaleActive(p.saleEndDate)).length})` },
-          { key: "promotion", label: `Promotion (${allProducts.filter(p => p.isOnSale && isSaleActive(p.saleEndDate)).length})` },
-          { key: "no_stock", label: `No Stock (${allProducts.filter(p => !p.inStock && !isSaleActive(p.saleEndDate)).length})` }
-        ].map(tab => (
-          <button
-            key={tab.key}
-            onClick={() => setCurrentSection(tab.key)}
-            className={`flex-1 py-3 text-xs font-bold text-center border-b-2 transition-colors ${
-              currentSection === tab.key ? 'border-avPrimary text-avPrimary' : 'border-transparent text-gray-500'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* PRODUCT LIST */}
-      <div className="p-4 space-y-3">
-        {error && allProducts.length === 0 ? (
-          <div className="text-center py-10">
-            <p className="text-red-500 mb-2">{error}</p>
-            <button onClick={fetchProducts} className="text-avPrimary font-bold">Try again</button>
+        {/* SEARCH */}
+        <div className="px-4 mb-4">
+          <div className="bg-[#F1F2F4] rounded-full px-4 h-[44px] flex items-center">
+            <svg className="w-5 h-5 text-black mr-2 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+            <input 
+              type="text" 
+              placeholder="Search products in your shop..." 
+              value={searchQuery}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              className="bg-transparent w-full outline-none text-[14px] text-black placeholder-gray-600"
+            />
           </div>
-        ) : filteredProducts.length === 0 ? (
-          <p className="text-center text-gray-500 py-10">
-            {searchQuery ? "No products match your search." : "No products found in this section."}
-          </p>
-        ) : (
-          filteredProducts.map((product, index) => {
-            const isEditing = editingProductId === product.id;
-            const currentlyOnSale = product.isOnSale && isSaleActive(product.saleEndDate);
-            const isNoStock = !product.inStock;
-            const isHighlighted = product.id ? recentlyUpdated.has(product.id) : false;
+        </div>
 
-            if (isEditing) {
-              return (
-                <div key={product.id || index} className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-                  <h3 className="text-sm font-bold text-avPrimary mb-3">Editing Product</h3>
-                  <div className="space-y-3">
-                    <input value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2 text-sm outline-none" placeholder="Name" />
-                    <input value={editForm.price} onChange={e => setEditForm({...editForm, price: e.target.value})} type="number" className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2 text-sm outline-none" placeholder="Price" />
-                    <div className="flex space-x-2">
-                      <select value={editForm.unit} onChange={e => setEditForm({...editForm, unit: e.target.value})} className="w-1/2 bg-gray-50 border border-gray-200 rounded-lg p-2 text-sm outline-none">
-                        <option value="per_kg">per kg</option>
-                        <option value="per_100g">per 100g</option>
-                        <option value="per_piece">per piece</option>
-                      </select>
-                      <select value={editForm.category} onChange={e => setEditForm({...editForm, category: e.target.value})} className="w-1/2 bg-gray-50 border border-gray-200 rounded-lg p-2 text-sm outline-none">
-                        {["Kirana", "Snacks", "Dairy", "Drinks", "Fruits & vegetables", "TechTools", "Stat.", "Others"].map(c => (
-                          <option key={c} value={c}>{c}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="flex space-x-2 pt-2">
-                      <button onClick={() => setEditingProductId(null)} className="flex-1 py-2 border border-gray-300 rounded-lg text-sm font-bold text-gray-700">Cancel</button>
-                      <button onClick={handleEditSubmit} className="flex-1 py-2 bg-avPrimary text-white rounded-lg text-sm font-bold">Save</button>
+        {/* CUSTOM TABS (Folder style) */}
+        <div className="px-4 flex border-b border-[#E0E0E0]">
+          {[
+            { key: "in_stock", label: `In Stock`, count: inStockCount },
+            { key: "promotion", label: `Promotion`, count: promoCount },
+            { key: "no_stock", label: `No Stock`, count: noStockCount }
+          ].map(tab => {
+            const isSelected = currentSection === tab.key;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setCurrentSection(tab.key)}
+                className={`flex-1 py-2.5 text-[11px] font-bold text-center rounded-t-[12px] transition-colors relative flex justify-center ${
+                  isSelected ? 'text-[#6200EE]' : 'text-[#757575]'
+                }`}
+              >
+                <span>{tab.label} ({tab.count})</span>
+                {isSelected && (
+                  <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#6200EE]" />
+                )}
+              </button>
+            )
+          })}
+        </div>
+
+        {/* PRODUCT LIST */}
+        <div className="p-4 space-y-3">
+          {error && allProducts.length === 0 ? (
+            <div className="text-center py-10">
+              <p className="text-[#B00020] mb-2">{error}</p>
+              <button onClick={fetchProducts} className="text-[#6200EE] font-bold">Try again</button>
+            </div>
+          ) : filteredProducts.length === 0 ? (
+            <p className="text-center text-[#757575] py-10">
+              {searchQuery ? "No products match your search." : "No products found in this section."}
+            </p>
+          ) : (
+            filteredProducts.map((product, index) => {
+              const isEditing = editingProductId === product.id;
+              const currentlyOnSale = product.isOnSale && isSaleActive(product.saleEndDate);
+              const isNoStock = !product.inStock;
+              const isHighlighted = product.id ? recentlyUpdated.has(product.id) : false;
+              const updatedLabel = getUpdatedLabel(product.last_updated);
+
+              if (isEditing) {
+                return (
+                  <div key={product.id || index} className="bg-white rounded-[12px] p-4 shadow-sm border border-[#E0E0E0]">
+                    <h3 className="text-[14px] font-bold text-[#6200EE] mb-3">Editing Product</h3>
+                    <div className="space-y-3">
+                      <input value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} className="w-full bg-[#F5F5F5] border border-[#E0E0E0] rounded-[8px] p-2 text-[14px] outline-none" placeholder="Name" />
+                      <input value={editForm.price} onChange={e => setEditForm({...editForm, price: e.target.value})} type="number" className="w-full bg-[#F5F5F5] border border-[#E0E0E0] rounded-[8px] p-2 text-[14px] outline-none" placeholder="Price" />
+                      <div className="flex space-x-2">
+                        <select value={editForm.unit} onChange={e => setEditForm({...editForm, unit: e.target.value})} className="w-1/2 bg-[#F5F5F5] border border-[#E0E0E0] rounded-[8px] p-2 text-[14px] outline-none">
+                          <option value="per_kg">per kg</option>
+                          <option value="per_100g">per 100g</option>
+                          <option value="per_piece">per piece</option>
+                        </select>
+                        <select value={editForm.category} onChange={e => setEditForm({...editForm, category: e.target.value})} className="w-1/2 bg-[#F5F5F5] border border-[#E0E0E0] rounded-[8px] p-2 text-[14px] outline-none">
+                          {["Kirana", "Snacks", "Dairy", "Drinks", "Fruits & vegetables", "TechTools", "Stat.", "Others"].map(c => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="flex space-x-2 pt-2">
+                        <button onClick={() => setEditingProductId(null)} className="flex-1 py-2 border border-[#E0E0E0] rounded-[8px] text-[14px] font-bold text-[#757575]">Cancel</button>
+                        <button onClick={handleEditSubmit} className="flex-1 py-2 bg-[#6200EE] text-white rounded-[8px] text-[14px] font-bold">Save</button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            }
+                );
+              }
 
-            return (
-              <div key={product.id || index} className={`bg-white rounded-xl p-3 shadow-sm border transition-colors duration-500 flex items-center ${isHighlighted ? 'border-avPrimary bg-purple-50' : 'border-gray-200'}`}>
-                <div className="w-16 h-16 bg-gray-50 rounded-lg overflow-hidden flex-shrink-0">
-                  <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
-                </div>
-                <div className="flex-1 ml-3 overflow-hidden">
-                  <p className="text-sm font-bold text-black truncate">{product.name}</p>
-                  <p className="text-[11px] text-gray-500 truncate">
-                    {product.category || "Others"}{getUpdatedLabel(product.last_updated)}
-                  </p>
-                  <div className="flex items-center mt-1">
-                    {currentlyOnSale && product.salePrice ? (
-                      <>
-                        <span className="text-sm font-bold text-avPrimary">₹{product.salePrice.toFixed(0)}</span>
-                        <span className="text-[10px] text-gray-400 line-through ml-2">₹{product.price.toFixed(0)}</span>
-                      </>
+              return (
+                <div key={product.id || index} className={`bg-white rounded-[12px] p-2 shadow-none border transition-colors duration-500 flex items-center ${isHighlighted ? 'border-[#6200EE]/50 bg-[#6200EE]/15' : 'border-[#E0E0E0]/50'}`}>
+                  
+                  {/* IMAGE */}
+                  <div 
+                    className="w-[72px] h-[72px] bg-[#F5F5F5] rounded-[8px] overflow-hidden flex-shrink-0 border border-[#E0E0E0]/50 cursor-pointer"
+                    onClick={() => product.imageUrl && setZoomImage(product.imageUrl)}
+                  >
+                    {product.imageUrl ? (
+                      <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
                     ) : (
-                      <span className="text-sm font-medium text-black">₹{product.price.toFixed(0)} / {product.unit.replace("_", " ")}</span>
+                      <div className="w-full h-full flex items-center justify-center text-gray-400">
+                        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                      </div>
                     )}
                   </div>
-                  <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[9px] font-bold ${isNoStock ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-700'}`}>
-                    {isNoStock ? "Out of Stock" : "In Stock"}
-                  </span>
-                </div>
 
-                                {/* DROPDOWN MENU */}
-                <div className="relative">
-                  <button 
-                    onClick={() => setOpenMenuId(openMenuId === product.id ? null : (product.id || null))} 
-                    className="p-2 text-gray-500"
-                  >
-                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>
-                  </button>
-                  {openMenuId === product.id && (
-                    <div className="absolute right-0 top-10 w-40 bg-white rounded-lg shadow-xl border border-gray-100 z-50 flex flex-col overflow-hidden">
-                      <button onClick={() => {
-                        setOpenMenuId(null);
-                        setEditingProductId(product.id);
-                        setEditForm({ name: product.name, price: product.price.toString(), unit: product.unit, category: product.category || "Others" });
-                      }} className="text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Edit</button>
-                      
-                      <button onClick={() => {
-                        setOpenMenuId(null);
-                        setProductToPromote(product);
-                        setPromoForm({ salePrice: product.salePrice?.toString() || "", saleDescription: product.saleDescription || "", durationDays: "7" });
-                      }} className="text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                        {currentlyOnSale ? "Edit Sale" : "Promote"}
-                      </button>
-                      
-                      <button onClick={() => {
-                        setOpenMenuId(null);
-                        handleToggleStock(product);
-                      }} className="text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                        {product.inStock ? "Stock Out" : "Stock In"}
-                      </button>
-                      
-                      <div className="h-px bg-gray-100 w-full my-1"></div>
-                      <button onClick={() => {
-                        setOpenMenuId(null);
-                        setProductToDelete(product);
-                      }} className="text-left px-4 py-2 text-sm text-red-500 font-bold hover:bg-red-50">Delete</button>
+                  {/* INFO */}
+                  <div className="flex-1 ml-2.5 overflow-hidden flex flex-col gap-0.5">
+                    <p className="text-[14px] font-semibold text-black truncate leading-tight">{product.name}</p>
+                    <p className="text-[11px] text-[#757575] truncate leading-tight">
+                      {product.category || "Others"}{updatedLabel}
+                    </p>
+                    
+                    <div className="flex items-center mt-0.5">
+                      {currentlyOnSale && product.salePrice ? (
+                        <>
+                          <span className="text-[14px] font-bold text-[#6200EE]">₹{product.salePrice.toFixed(0)}</span>
+                          <span className="text-[11px] text-[#757575] line-through ml-1.5">₹{product.price.toFixed(0)}</span>
+                        </>
+                      ) : (
+                        <span className="text-[14px] font-medium text-black">₹{product.price.toFixed(0)} / {product.unit.replace("_", " ")}</span>
+                      )}
                     </div>
-                  )}
-                </div>
+
+                    <div className="mt-1">
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-bold ${isNoStock ? 'bg-[#B00020]/10 text-[#B00020]' : 'bg-[#10B981]/10 text-[#10B981]'}`}>
+                        {isNoStock ? "Out of Stock" : "In Stock"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* MENU */}
+                  <div className="relative">
+                    <button 
+                      onClick={() => setOpenMenuId(openMenuId === product.id ? null : (product.id || null))} 
+                      className="p-2 text-[#757575] hover:bg-gray-50 rounded-full"
+                    >
+                      <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>
+                    </button>
+                    {openMenuId === product.id && (
+                      <div className="absolute right-0 top-10 w-40 bg-white rounded-[8px] shadow-xl border border-[#E0E0E0] z-50 flex flex-col overflow-hidden py-1">
+                        <button onClick={() => {
+                          setOpenMenuId(null);
+                          setEditingProductId(product.id);
+                          setEditForm({ name: product.name, price: product.price.toString(), unit: product.unit, category: product.category || "Others" });
+                        }} className="text-left px-4 py-2 text-[14px] text-black hover:bg-gray-50">Edit</button>
+                        
+                        <button onClick={() => {
+                          setOpenMenuId(null);
+                          setProductToPromote(product);
+                          setPromoForm({ salePrice: product.salePrice?.toString() || "", saleDescription: product.saleDescription || "", durationDays: "7" });
+                        }} className="text-left px-4 py-2 text-[14px] text-black hover:bg-gray-50">
+                          {currentlyOnSale ? "Edit Sale" : "Promote"}
+                        </button>
+                        
+                        <button onClick={() => {
+                          setOpenMenuId(null);
+                          handleToggleStock(product);
+                        }} className="text-left px-4 py-2 text-[14px] text-black hover:bg-gray-50">
+                          {product.inStock ? "Stock Out" : "Stock In"}
+                        </button>
+                        
+                        <div className="h-px bg-[#E0E0E0] w-full my-1"></div>
+                        <button onClick={() => {
+                          setOpenMenuId(null);
+                          setProductToDelete(product);
+                        }} className="text-left px-4 py-2 text-[14px] text-[#B00020] font-bold hover:bg-red-50">Delete</button>
+                      </div>
+                    )}
+                  </div>
               </div>
             );
           })
         )}
       </div>
+      </div>
 
       {/* FLOATING ACTION BUTTONS */}
-      <div className="fixed bottom-20 right-4 flex flex-col space-y-3 z-40">
-        <button onClick={() => alert("Voice Assistant Placeholder (Skipped)")} className="w-12 h-12 bg-purple-100 text-purple-700 rounded-full shadow-lg flex items-center justify-center">
-           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
-        </button>
-        <button onClick={() => setShowDescriptionDialog(true)} className="w-12 h-12 bg-purple-200 text-purple-800 rounded-full shadow-lg flex items-center justify-center">
+      <div className="fixed bottom-20 right-4 flex flex-col space-y-4 z-40">
+        <button onClick={() => setShowDescriptionDialog(true)} className="w-[48px] h-[48px] bg-[#E0D4F5] text-[#6200EE] rounded-full shadow-lg flex items-center justify-center transition-transform active:scale-95">
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
         </button>
-        <button onClick={() => alert("Add Product Placeholder (Camera not implemented yet)")} className="w-14 h-14 bg-avSecondary text-black rounded-full shadow-lg flex items-center justify-center">
+        <button onClick={handleAddProductClick} className="w-[56px] h-[56px] bg-[#03DAC5] text-black rounded-full shadow-lg flex items-center justify-center transition-transform active:scale-95">
           <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
         </button>
       </div>
 
+      {/* IMAGE ZOOM MODAL */}
+      {zoomImage && (
+        <div className="fixed inset-0 z-[200] bg-black/90 flex items-center justify-center p-4" onClick={() => setZoomImage(null)}>
+          <div className="relative w-full max-w-lg aspect-square">
+            <img src={zoomImage} alt="Zoomed" className="w-full h-full object-contain" />
+            <button className="absolute top-2 right-2 w-8 h-8 bg-black/50 text-white rounded-full flex items-center justify-center">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* PROMOTION DIALOG */}
       {productToPromote && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
-            <h2 className="text-lg font-bold text-black mb-1">Manage Promotion</h2>
-            <p className="text-xs text-gray-500 mb-4">for {productToPromote.name}</p>
+          <div className="bg-white rounded-[16px] p-6 w-full max-w-sm">
+            <h2 className="text-[20px] font-bold text-black mb-1">Manage Promotion</h2>
+            <p className="text-[14px] text-[#757575] mb-4">for {productToPromote.name}</p>
             
             <div className="space-y-3">
-              <input type="number" placeholder={`Sale Price (Original: ₹${productToPromote.price.toFixed(0)})`} value={promoForm.salePrice} onChange={e => setPromoForm({...promoForm, salePrice: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2 text-sm outline-none" />
-              <input placeholder="Offer Description" value={promoForm.saleDescription} onChange={e => setPromoForm({...promoForm, saleDescription: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2 text-sm outline-none" />
-              <input type="number" placeholder="Duration (Days)" value={promoForm.durationDays} onChange={e => setPromoForm({...promoForm, durationDays: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2 text-sm outline-none" />
+              <input type="number" placeholder={`Sale Price (Original: ₹${productToPromote.price.toFixed(0)})`} value={promoForm.salePrice} onChange={e => setPromoForm({...promoForm, salePrice: e.target.value})} className="w-full bg-[#F5F5F5] border border-[#E0E0E0] rounded-[8px] p-3 text-[14px] outline-none" />
+              <input placeholder="Offer Description" value={promoForm.saleDescription} onChange={e => setPromoForm({...promoForm, saleDescription: e.target.value})} className="w-full bg-[#F5F5F5] border border-[#E0E0E0] rounded-[8px] p-3 text-[14px] outline-none" />
+              <input type="number" placeholder="Duration (Days)" value={promoForm.durationDays} onChange={e => setPromoForm({...promoForm, durationDays: e.target.value})} className="w-full bg-[#F5F5F5] border border-[#E0E0E0] rounded-[8px] p-3 text-[14px] outline-none" />
             </div>
 
             <div className="mt-6 space-y-2">
-              <button onClick={handlePromotionSubmit} className="w-full py-2.5 bg-avPrimary text-white rounded-lg font-bold text-sm">
+              <button onClick={handlePromotionSubmit} className="w-full py-3 bg-[#6200EE] text-white rounded-[8px] font-bold text-[14px]">
                 {productToPromote.isOnSale ? "Update Promotion" : "Start Promotion"}
               </button>
               {productToPromote.isOnSale && (
-                <button onClick={handleRemovePromotion} className="w-full py-2.5 bg-red-100 text-red-600 rounded-lg font-bold text-sm">Remove Promotion</button>
+                <button onClick={handleRemovePromotion} className="w-full py-3 bg-[#B00020] text-white rounded-[8px] font-bold text-[14px]">Remove Promotion</button>
               )}
-              <button onClick={() => setProductToPromote(null)} className="w-full py-2.5 border border-gray-300 text-gray-700 rounded-lg font-bold text-sm">Cancel</button>
+              <button onClick={() => setProductToPromote(null)} className="w-full py-3 border border-[#E0E0E0] text-[#757575] rounded-[8px] font-bold text-[14px]">Cancel</button>
             </div>
           </div>
         </div>
@@ -457,12 +555,12 @@ export default function MyShopScreen() {
       {/* DELETE DIALOG */}
       {productToDelete && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-sm text-center">
-            <h2 className="text-lg font-bold text-black mb-2">Delete Product</h2>
-            <p className="text-sm text-gray-600 mb-6">Are you sure you want to delete '{productToDelete.name}'? This action cannot be undone.</p>
+          <div className="bg-white rounded-[16px] p-6 w-full max-w-sm text-center">
+            <h2 className="text-[20px] font-bold text-black mb-2">Delete Product</h2>
+            <p className="text-[14px] text-[#757575] mb-6">Are you sure you want to delete '{productToDelete.name}'? This action cannot be undone.</p>
             <div className="flex space-x-3">
-              <button onClick={() => setProductToDelete(null)} className="flex-1 py-2 border border-gray-300 rounded-lg font-bold text-gray-700">Cancel</button>
-              <button onClick={handleDelete} className="flex-1 py-2 bg-red-500 text-white rounded-lg font-bold">Delete</button>
+              <button onClick={() => setProductToDelete(null)} className="flex-1 py-3 border border-[#E0E0E0] rounded-[8px] font-bold text-[#757575]">Cancel</button>
+              <button onClick={handleDelete} className="flex-1 py-3 bg-[#B00020] text-white rounded-[8px] font-bold">Delete</button>
             </div>
           </div>
         </div>
@@ -471,19 +569,27 @@ export default function MyShopScreen() {
       {/* STORE DESCRIPTION DIALOG */}
       {showDescriptionDialog && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
-            <h2 className="text-lg font-bold text-black mb-4">About your store</h2>
+          <div className="bg-white rounded-[16px] p-6 w-full max-w-sm">
+            <h2 className="text-[20px] font-bold text-black mb-4">About your store</h2>
             
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div>
-                <label className="text-xs text-gray-500 ml-1">Mobile number</label>
-                <input value={ownerPhone} onChange={e => setOwnerPhone(e.target.value.replace(/\D/g, '').slice(0,12))} className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2 text-sm outline-none" />
+                <label className="text-[12px] text-[#757575] ml-1 mb-1 block">Mobile number</label>
+                <input 
+                  value={ownerPhone} 
+                  onChange={e => {
+                    setOwnerPhone(e.target.value.replace(/\D/g, '').slice(0,12));
+                    setPhoneError(false);
+                  }} 
+                  className={`w-full bg-[#F5F5F5] border rounded-[8px] p-3 text-[14px] outline-none ${phoneError ? 'border-[#B00020]' : 'border-[#E0E0E0]'}`} 
+                />
+                {phoneError && <p className="text-[#B00020] text-[11px] ml-1 mt-1">Phone must be 10-12 digits.</p>}
               </div>
               <div>
                 <div className="flex justify-between items-end mb-1">
-                  <label className="text-xs text-gray-500 ml-1">Description</label>
-                  <button onClick={startVoiceInput} className="text-avPrimary text-xs font-bold flex items-center">
-                    <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clipRule="evenodd" /></svg>
+                  <label className="text-[12px] text-[#757575] ml-1">Description</label>
+                  <button onClick={startVoiceInput} className="text-[#6200EE] text-[12px] font-bold flex items-center">
+                    <svg className="w-3.5 h-3.5 mr-1" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clipRule="evenodd" /></svg>
                     Speak
                   </button>
                 </div>
@@ -492,15 +598,15 @@ export default function MyShopScreen() {
                   onChange={e => setStoreDescription(e.target.value.slice(0, 300))} 
                   rows={4}
                   placeholder="Tell customers about your store..."
-                  className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2 text-sm outline-none resize-none" 
+                  className="w-full bg-[#F5F5F5] border border-[#E0E0E0] rounded-[8px] p-3 text-[14px] outline-none resize-none" 
                 />
-                <p className="text-right text-[10px] text-gray-400 mt-1">{storeDescription.length} / 300</p>
+                <p className="text-right text-[11px] text-[#757575] mt-1">{storeDescription.length} / 300</p>
               </div>
             </div>
 
             <div className="flex space-x-3 mt-6">
-              <button onClick={() => setShowDescriptionDialog(false)} className="flex-1 py-2 border border-gray-300 rounded-lg font-bold text-gray-700">Cancel</button>
-              <button onClick={handleSaveDesc} disabled={isSavingDesc} className="flex-1 py-2 bg-avPrimary text-white rounded-lg font-bold disabled:opacity-50">
+              <button onClick={() => setShowDescriptionDialog(false)} className="flex-1 py-3 border border-[#E0E0E0] rounded-[8px] font-bold text-[#757575]">Cancel</button>
+              <button onClick={handleSaveDesc} disabled={isSavingDesc} className="flex-1 py-3 bg-[#6200EE] text-white rounded-[8px] font-bold disabled:opacity-50">
                 {isSavingDesc ? "Saving..." : "Save"}
               </button>
             </div>
@@ -508,7 +614,34 @@ export default function MyShopScreen() {
         </div>
       )}
 
+      {/* CAMERA CONSENT DIALOG */}
+      {showCameraConsentDialog && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-6">
+          <div className="bg-white rounded-[16px] p-6 w-full max-w-sm text-center">
+            <h2 className="text-[20px] font-bold text-black mb-3">Camera Access Required</h2>
+            <p className="text-[14px] text-[#121212] mb-2 text-left leading-relaxed">
+              We need to use your camera to take photos of the products you want to add.
+            </p>
+            <p className="text-[14px] text-[#121212] mb-6 text-left font-semibold">
+              Do you agree to allow camera access?
+            </p>
+            <div className="flex space-x-3">
+              <button onClick={() => setShowCameraConsentDialog(false)} className="flex-1 py-3 border border-[#E0E0E0] rounded-[8px] font-bold text-[#B00020]">Deny</button>
+              <button onClick={acceptCameraConsent} className="flex-1 py-3 bg-[#6200EE] text-white rounded-[8px] font-bold">Agree</button>
+            </div>
+          </div>
+        </div>
+      )}
+      
       <BottomNav />
     </div>
+  );
+}
+
+export default function MyShopScreen() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-[#F5F5F5]"><div className="w-10 h-10 border-4 border-[#6200EE] border-t-transparent rounded-full animate-spin"></div></div>}>
+      <MyShopContent />
+    </Suspense>
   );
 }
