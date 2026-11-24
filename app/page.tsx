@@ -11,9 +11,68 @@ import CategoryScrollRow from "../components/CategoryScrollRow";
 import LiveFindsSection from "../components/LiveFindsSection";
 import BottomNav from "../components/BottomNav";
 import ProfileSidebar from "../components/ProfileSidebar";
-
+import InstallAppBanner from "../components/InstallAppBanner";
 const FALLBACK_LOCATION = { lat: 17.3850, lng: 78.4867 };
 
+type LatLng = { lat: number; lng: number };
+
+function getPosition(options: PositionOptions): Promise<GeolocationPosition> {
+  return new Promise((resolve, reject) =>
+    navigator.geolocation.getCurrentPosition(resolve, reject, options)
+  );
+}
+
+function distanceMeters(a: LatLng, b: LatLng): number {
+  const R = 6371000;
+  const toRad = (x: number) => (x * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+function loadSavedLocation(): { lat: number; lng: number; address?: string } | null {
+  try {
+    const raw = localStorage.getItem("av_last_location");
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function saveLocation(loc: { lat: number; lng: number; address?: string }) {
+  try {
+    localStorage.setItem("av_last_location", JSON.stringify(loc));
+  } catch (e) {}
+}
+
+// Tries two free services so the place name almost always appears
+async function reverseGeocode(lat: number, lng: number): Promise<string | null> {
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.address) {
+        const city = data.address.city || data.address.town || data.address.village || data.address.suburb || data.address.state_district;
+        const parts = [city, data.address.state, data.address.postcode].filter(Boolean);
+        if (parts.length > 0) return parts.join(", ");
+      }
+    }
+  } catch (e) {}
+
+  try {
+    const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`);
+    if (res.ok) {
+      const d = await res.json();
+      const parts = [d.locality || d.city, d.principalSubdivision, d.postcode].filter(Boolean);
+      if (parts.length > 0) return parts.join(", ");
+    }
+  } catch (e) {}
+
+  return null;
+}
 // Same rotating placeholders as Android SearchSection
 const SEARCH_PLACEHOLDERS = ["Search for products near you", "Search bananas", "Search what's nearby"];
 
@@ -38,7 +97,7 @@ export default function CustomerHomePage() {
   const [consentDenied, setConsentDenied] = useState(false);
   const [coords, setCoords] = useState<{lat: number, lng: number} | null>(null);
   const [currentAddress, setCurrentAddress] = useState("Locating...");
-
+  const [locationFailed, setLocationFailed] = useState(false);
   // Cart Bubble state
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [shopCount, setShopCount] = useState(5);
@@ -50,6 +109,13 @@ export default function CustomerHomePage() {
   const [showReferral, setShowReferral] = useState(false);
   const [referralCode, setReferralCode] = useState("");
   const [referralLoading, setReferralLoading] = useState(false);
+
+  // Remember that the customer has seen the Home page in this tab
+  useEffect(() => {
+    try {
+      sessionStorage.setItem("av_visited_home", "1");
+    } catch (e) {}
+  }, []);
 
   // Search placeholder rotation (Android: every 3 seconds)
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
@@ -90,68 +156,99 @@ export default function CustomerHomePage() {
         }
       }
 
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          async (position) => {
-            const lat = position.coords.latitude;
-            const lng = position.coords.longitude;
-            setCoords({ lat, lng });
-            fetchData(lat, lng);
+      setRoleChecked(true);
 
-            // REAL REVERSE GEOCODING
-            try {
-              const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
-              const data = await res.json();
-              if (data && data.address) {
-                const city = data.address.city || data.address.town || data.address.village || data.address.suburb || data.address.state_district;
-                const state = data.address.state;
-                const postcode = data.address.postcode;
-                const addrParts = [city, state, postcode].filter(Boolean);
-                setCurrentAddress(addrParts.length > 0 ? addrParts.join(", ") : "Near you");
-              } else {
-                setCurrentAddress("Near you");
-              }
-            } catch {
-              setCurrentAddress("Near you");
-            }
-          },
-          () => {
-            setCoords(FALLBACK_LOCATION);
+      // 1. Show the last known location instantly (if we have one)
+      const saved = loadSavedLocation();
+      let current = (saved ? { lat: saved.lat, lng: saved.lng } : null) as LatLng | null;
+      let currentAddr = saved?.address;
+
+      if (saved) {
+        setCoords({ lat: saved.lat, lng: saved.lng });
+        setCurrentAddress(saved.address || "Near you");
+        fetchData(saved.lat, saved.lng);
+      }
+
+      // 2. Use a fresh location: reload products only if customer moved 300m+
+      const applyLocation = async (lat: number, lng: number) => {
+        const moved = !current || distanceMeters(current, { lat, lng }) > 300;
+        if (moved) {
+          current = { lat, lng };
+          currentAddr = undefined;
+          setCoords({ lat, lng });
+          fetchData(lat, lng);
+        }
+        if (!currentAddr || currentAddr === "Near you") {
+          const address = await reverseGeocode(lat, lng);
+          if (address) {
+            currentAddr = address;
+            setCurrentAddress(address);
+          } else if (moved) {
             setCurrentAddress("Near you");
-            fetchData(FALLBACK_LOCATION.lat, FALLBACK_LOCATION.lng);
-          },
-          { timeout: 5000, enableHighAccuracy: true }
-        );
-      } else {
+          }
+        }
+        saveLocation({ lat, lng, address: currentAddr });
+      };
+
+      let denied = !navigator.geolocation;
+
+      // Fast location first (wifi / mobile network)
+      if (!denied) {
+        try {
+          const quick = await getPosition({ enableHighAccuracy: false, timeout: 8000, maximumAge: 5 * 60 * 1000 });
+          await applyLocation(quick.coords.latitude, quick.coords.longitude);
+        } catch (err: any) {
+          if (err && err.code === 1) denied = true;
+        }
+      }
+
+      // Then precise GPS location (gets 15 seconds, not 5)
+      if (!denied) {
+        try {
+          const precise = await getPosition({ enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+          await applyLocation(precise.coords.latitude, precise.coords.longitude);
+        } catch (err) {}
+      }
+
+      // 3. Nothing worked and nothing saved -> default area, with a Retry button
+      if (!current) {
         setCoords(FALLBACK_LOCATION);
-        setCurrentAddress("Near you");
+        setCurrentAddress("Location unavailable");
+        setLocationFailed(true);
         fetchData(FALLBACK_LOCATION.lat, FALLBACK_LOCATION.lng);
       }
-      setRoleChecked(true);
     };
 
     initialize();
   }, [router]);
 
-  const fetchData = async (latitude: number, longitude: number, category?: string) => {
+  const fetchData = async (latitude: number, longitude: number, category?: string, attempt = 0) => {
     setLoading(true);
+    let failed = false as boolean;
+    let retrying = false as boolean;
     try {
       const [d, t, b, e, s] = await Promise.all([
-        getDeals(latitude, longitude, category).catch(() => ({ products: [] })),
-        getTrendingProducts(latitude, longitude, category).catch(() => ({ products: [] })),
-        getBestPriceProducts(latitude, longitude, category).catch(() => ({ products: [] })),
-        getExtendedDeals(latitude, longitude, category).catch(() => ({ products: [] })),
-        getNearbyShops(latitude, longitude, category).catch(() => null)
+        getDeals(latitude, longitude, category).catch(() => { failed = true; return { products: [] }; }),
+        getTrendingProducts(latitude, longitude, category).catch(() => { failed = true; return { products: [] }; }),
+        getBestPriceProducts(latitude, longitude, category).catch(() => { failed = true; return { products: [] }; }),
+        getExtendedDeals(latitude, longitude, category).catch(() => { failed = true; return { products: [] }; }),
+        getNearbyShops(latitude, longitude, category).catch(() => { failed = true; return null; })
       ]);
-      setDeals(d.products);
-      setTrending(t.products);
-      setBestPrice(b.products);
-      setExtended(e.products);
+      setDeals(d.products || []);
+      setTrending(t.products || []);
+      setBestPrice(b.products || []);
+      setExtended(e.products || []);
       if (s && s.shops) setPopularShops(s.shops);
+
+      // If something failed, try again (up to 2 more times)
+      if (failed && attempt < 2) {
+        retrying = true;
+        setTimeout(() => fetchData(latitude, longitude, category, attempt + 1), 2000);
+      }
     } catch (err) {
       console.error("Failed to fetch data", err);
     } finally {
-      setLoading(false);
+      if (!retrying) setLoading(false);
     }
   };
 
@@ -259,6 +356,7 @@ export default function CustomerHomePage() {
       )}
 
       <div className="w-full max-w-7xl mx-auto flex flex-col">
+        <InstallAppBanner />
         {/* FIXED TOP AREA: header, subtitle, search, categories (pinned like Android) */}
         <div className="sticky top-0 z-50 bg-[#F6F6F6]">
         {/* HEADER */}
@@ -315,8 +413,13 @@ export default function CustomerHomePage() {
               <span className="flex-1 min-w-0 text-[14px] font-semibold text-black truncate leading-[15px] border-b border-black pb-[2px]">
                 {currentAddress === "Locating..." ? "Near you" : currentAddress}
               </span>
-              <div className="w-2 shrink-0"></div>
-            </div>
+              {locationFailed ? (
+                <button onClick={() => window.location.reload()} className="ml-2 text-[13px] font-bold text-[#6200EE] shrink-0">
+                  Retry
+                </button>
+              ) : (
+                <div className="w-2 shrink-0"></div>
+              )}            </div>
           </div>
         )}
 

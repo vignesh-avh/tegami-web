@@ -35,12 +35,31 @@ function ShopDetailsContent() {
   
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // If customer arrived directly (QR / link), phone back button goes to Home
+  useEffect(() => {
+    let visitedHome = false;
+    try {
+      visitedHome = sessionStorage.getItem("av_visited_home") === "1";
+    } catch (e) {}
+    if (visitedHome) return;
+
+    window.history.pushState({ avGuard: true }, "", window.location.href);
+    const onPopState = () => {
+      router.replace("/");
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [router]);
   useEffect(() => {
     if (!shopId) return;
     
     const init = async () => {
       try {
-        await recordShopView(shopId);
+        try {
+          await recordShopView(shopId);
+        } catch (e) {
+          console.log("View not recorded", e);
+        }
         const res = await getShopDetails(shopId);
         setShop(res.shop);
       } catch (err) {
@@ -135,8 +154,20 @@ function ShopDetailsContent() {
       
       {/* TOP BAR */}
       <div className="sticky top-0 z-50 bg-white shadow-sm px-2 py-2 flex items-center justify-between">
-        <button onClick={() => router.back()} className="p-2 text-black">
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+        <button
+          onClick={() => {
+            let visitedHome = false;
+            try {
+              visitedHome = sessionStorage.getItem("av_visited_home") === "1";
+            } catch (e) {}
+            if (visitedHome) {
+              router.back();
+            } else {
+              router.push("/");
+            }
+          }}
+          className="p-2 text-black"
+        >          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
         </button>
         
         <div className="flex-1 flex justify-center items-center space-x-1.5 min-w-0">
