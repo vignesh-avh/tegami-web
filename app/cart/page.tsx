@@ -1282,10 +1282,10 @@ function MapWidget({ encodedData, isPipMode, setIsPipMode, onClose }: { encodedD
           map.addLayer({ id: 'route-line', type: 'line', source: 'routes', paint: { 'line-color': ['get', 'color'], 'line-width': ['get', 'width'] } });
         }
 
-        map.addSource('all-shops', { type: 'geojson', data: { type: 'FeatureCollection', features: bluePins } });
+        map.addSource('all-shops', { type: 'geojson', data: { type: 'FeatureCollection', features: bluePins as any } });
         map.addLayer({ id: 'shops-blue', type: 'symbol', source: 'all-shops', layout: { 'icon-image': 'pin-blue', 'icon-size': 0.8, 'icon-anchor': 'bottom' } });
 
-        map.addSource('route-shops', { type: 'geojson', data: { type: 'FeatureCollection', features: redPins } });
+        map.addSource('route-shops', { type: 'geojson', data: { type: 'FeatureCollection', features: redPins as any } });
         map.addLayer({ id: 'shops-red', type: 'symbol', source: 'route-shops', layout: { 'icon-image': 'pin-red', 'icon-size': 0.9, 'icon-anchor': 'bottom' } });
 
         const pinLng = userLoc?.lng || stops[0].lng; const pinLat = userLoc?.lat || stops[0].lat;
