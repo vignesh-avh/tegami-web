@@ -8,8 +8,16 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://tegami.avapp.in"),
   title: "Tegami",
   description: "Find what's available nearby — instantly.",
+  openGraph: {
+    title: "Tegami",
+    description: "Find what's available nearby — instantly.",
+    url: "https://tegami.avapp.in",
+    siteName: "Tegami",
+    type: "website",
+  },
 };
 
 export default function RootLayout({
