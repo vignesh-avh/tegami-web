@@ -481,3 +481,117 @@ export interface MultiShopRouteResponse {
   totalDuration?: number;
   totalShops?: number;
 }
+
+export interface GoogleAuthRequest {
+  token: string;
+  role?: string;
+}
+
+export interface CustomerLocationUpdate {
+  customer_id: string;
+  customer_name: string;
+  shop_ids: string[];
+  latitude: number;
+  longitude: number;
+  eta?: string;
+  distance?: number;
+  route_polyline?: string | null;
+  accuracy?: number;
+  heading?: number | null;
+}
+
+export interface IncomingCustomer {
+  customerId: string;
+  customerName: string;
+  latitude?: number;
+  longitude?: number;
+  eta?: string;
+  routePolyline?: string;
+  heading?: number;
+  isStale: boolean;
+}
+
+export interface IncomingCustomersResponse {
+  customers: IncomingCustomer[];
+}
+
+// ... existing types
+export interface ShopLocationMapData {
+  _id: string;
+  id?: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+}
+
+// --- ADD PRODUCT TYPES ---
+
+export interface UploadAndPredictResponse {
+  predicted_name: string;
+  temp_image_id: string;
+  predicted_category?: string;
+  predicted_unit?: string;
+  predicted_price?: string;
+  original_temp_id?: string;
+  catalog_image_url?: string;
+  was_catalog_used_by_default?: boolean;
+  predicted_confidence?: string;
+  alternative_names?: string[];
+}
+
+export interface BulkProductItem {
+  product_name: string;
+  price: number;
+  unit: string;
+  category: string;
+  temp_image_id: string;
+  extra_image_ids?: string[];
+  skip_extra_bg_removal?: boolean;
+}
+
+export interface BulkAddRequest {
+  owner_id: string;
+  products: BulkProductItem[];
+}
+
+export interface ScannedProduct {
+  id: string;
+  file?: File;
+  previewUrl: string;
+  predictedName: string;
+  predictedCategory: string;
+  predictedUnit: string;
+  predictedPrice: string;
+  tempImageId: string;
+  originalTempId?: string;
+  wasCatalogUsed?: boolean;
+  priceFromAi: boolean;
+  aiConfidence?: string;
+  alternatives: string[];
+  catalogImageUrl?: string;
+  isProcessing: boolean;
+  extraFiles: File[];
+  extraTempIds: string[];
+}
+
+export interface GalleryScannedProduct {
+  id: string;
+  localFile: File;
+  localUrl: string;
+  predictedName: string;
+  predictedCategory: string;
+  predictedUnit: string;
+  predictedPrice: string;
+  bgRemovedUrl?: string;
+  originalS3Url?: string;
+  catalogImageUrl?: string;
+  wasCatalogUsed: boolean;
+  aiConfidence?: string;
+  alternatives: string[];
+  priceFromAi: boolean;
+  selectedSide: 'Original' | 'BackgroundRemoved';
+  isProcessing: boolean;
+  needsCrop: boolean;
+  extraFiles: File[];
+  extraS3Urls: string[];
+}

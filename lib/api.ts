@@ -1,7 +1,7 @@
 import { 
   HomeProduct, ProductSectionResponse, ShopSearchResponse, ShopDetailsResponse, 
   UserDetails, AuthResponse, LoginRequest, SignupRequest, OwnerNotification, Product, CartItem, CheckoutResponse,
-  MultiShopRouteRequest, MultiShopRouteResponse
+  MultiShopRouteRequest, MultiShopRouteResponse, GoogleAuthRequest,UploadAndPredictResponse, BulkAddRequest
 } from "./types";
 
 const BASE_URL = "https://api.avapp.in/";
@@ -66,6 +66,25 @@ export const loginUser = async (data: LoginRequest) => {
   }
   return { success: false, status: res.status };
 };
+
+export const googleAuth = async (data: { token: string, role?: string }) => {
+  // FIX: Matches the FastAPI GoogleAuthRequest model in auth.py
+  const payload = {
+    access_token: data.token,
+    role: data.role || "customer"
+  };
+  
+  const res = await apiFetch("auth/google-auth", { method: "POST", body: JSON.stringify(payload) });
+  if (res.ok) {
+    const auth: AuthResponse = await res.json();
+    setToken(auth.access_token);
+    if (auth.refresh_token) setRefreshToken(auth.refresh_token);
+    return { success: true, status: res.status };
+  }
+  return { success: false, status: res.status };
+};
+
+
 
 export const signupUser = async (data: SignupRequest) => {
   const res = await apiFetch("auth/signup", { method: "POST", body: JSON.stringify(data) });
@@ -392,6 +411,11 @@ export const getAllShopLocations = async () => {
   return res.ok ? res.json() : null;
 };
 
+export const getIncomingCustomers = async (ownerId: string) => {
+  const res = await apiFetch(`owner/incoming-customers?owner_id=${ownerId}`);
+  return res.ok ? res.json() : { customers: [] };
+};
+
 // --- REFERRAL ENDPOINTS ---
 export const applyReferral = async (customerId: string, referralCode: string) => {
   const res = await apiFetch("referral/apply-referral", { 
@@ -407,5 +431,65 @@ export const skipReferral = async (userId: string) => {
     body: JSON.stringify({ user_id: userId }) 
   });
   return res.ok ? res.json() : null;
+};
+
+// --- ADD PRODUCT ENDPOINTS ---
+
+export const uploadAndPredict = async (file: File, isExtra: boolean = false): Promise<UploadAndPredictResponse | null> => {
+  const formData = new FormData();
+  formData.append("file", file);
+  
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${BASE_URL}upload-and-predict/?isExtra=${isExtra}`, {
+    method: "POST",
+    headers,
+    body: formData
+  });
+  
+  if (res.ok) return res.json();
+  return null;
+};
+
+export const addProduct = async (data: {
+  product_name: string, 
+  price: string, 
+  unit: string, 
+  owner_id: string, 
+  temp_image_id: string, 
+  temp_image_ids?: string[], 
+  category: string
+}) => {
+  const formData = new FormData();
+  formData.append("product_name", data.product_name);
+  formData.append("price", data.price);
+  formData.append("unit", data.unit);
+  formData.append("owner_id", data.owner_id);
+  formData.append("temp_image_id", data.temp_image_id);
+  if (data.temp_image_ids && data.temp_image_ids.length > 0) {
+    formData.append("temp_image_ids", JSON.stringify(data.temp_image_ids));
+  }
+  formData.append("category", data.category);
+
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${BASE_URL}add-product/`, {
+    method: "POST",
+    headers,
+    body: formData
+  });
+  return res.ok;
+};
+
+export const bulkAddProducts = async (request: BulkAddRequest) => {
+  const res = await apiFetch("bulk-add-products/", { 
+    method: "POST", 
+    body: JSON.stringify(request) 
+  });
+  return res.ok;
 };
 

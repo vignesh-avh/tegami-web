@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { loginUser } from "../../../lib/api";
+import { GoogleLogin } from "@react-oauth/google";
+import { loginUser, googleAuth } from "../../../lib/api";
 
 export default function OwnerLogin() {
   const router = useRouter();
@@ -123,22 +124,49 @@ export default function OwnerLogin() {
           <div className="flex-1 h-px bg-[#E0E0E0]/50"></div>
         </div>
 
-        <button 
-          type="button"
-          onClick={() => {
-            setIsGoogleLoading(true);
-            setTimeout(() => setIsGoogleLoading(false), 2000); // Placeholder
-          }}
-          disabled={isLoading || isGoogleLoading}
-          className="border border-[#757575]/50 rounded-[16px] h-[56px] font-medium text-[16px] w-full text-[#121212] bg-transparent flex items-center justify-center transition-all hover:bg-gray-50 active:scale-[0.98] disabled:opacity-50"
-        >
-          {isGoogleLoading ? (
-            <div className="flex items-center gap-2">
-              <div className="w-5 h-5 border-2 border-[#121212] border-t-transparent rounded-full animate-spin"></div>
-              Signing in...
+        <div className="relative w-full">
+        <div className="w-full flex justify-center">
+          <GoogleLogin
+            onSuccess={async (credentialResponse) => {
+              if (!credentialResponse.credential) return;
+              setIsGoogleLoading(true);
+              const res = await googleAuth({ token: credentialResponse.credential, role: "owner" });
+              setIsGoogleLoading(false);
+              if (res.success) {
+                router.push("/owner");
+              } else {
+                setLoginError("Google login failed. Please try again.");
+              }
+            }}
+            onError={() => setLoginError("Google login failed.")}
+            theme="outline"
+            size="large"
+            width="380"
+            shape="pill"
+            text="signin_with"
+          />
+        </div>
+          
+          {!isLoading && !isGoogleLoading && (
+            <div className="absolute inset-0 opacity-0 overflow-hidden cursor-pointer flex justify-center items-center">
+              <GoogleLogin
+                onSuccess={async (credentialResponse) => {
+                  if (!credentialResponse.credential) return;
+                  setIsGoogleLoading(true);
+                  const res = await googleAuth({ token: credentialResponse.credential, role: "owner" });
+                  setIsGoogleLoading(false);
+                  if (res.success) {
+                    router.push("/owner");
+                  } else {
+                    setLoginError("Google login failed. Please try again.");
+                  }
+                }}
+                onError={() => setLoginError("Google login failed.")}
+                width="400"
+              />
             </div>
-          ) : "Sign in with Google"}
-        </button>
+          )}
+        </div>
 
         <div className="mt-5 text-center text-[14px] text-[#757575]">
           Don't have a shop account?{" "}

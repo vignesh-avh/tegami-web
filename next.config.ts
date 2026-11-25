@@ -15,6 +15,20 @@ const nextConfig: NextConfig = {
       },
     },
   },
+  // FIX: Allow Google Popup to communicate with the app
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'Cross-Origin-Opener-Policy',
+            value: 'same-origin-allow-popups',
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

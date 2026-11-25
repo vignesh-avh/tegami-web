@@ -4,9 +4,10 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getUserIdFromToken, getDashboardMetrics, getShopPerformance, getShopDetails, getToken, getUserDetails } from "../../lib/api";
-import { DashboardMetrics, PerformanceData, ShopDetails, UserDetails } from "../../lib/types";
+import { DashboardMetrics, PerformanceData, ShopDetails, UserDetails, ShopLocationMapData } from "../../lib/types";
 import ProfileSidebar from "../../components/ProfileSidebar";
 import BottomNav from "../../components/BottomNav";
+import OwnerLiveMap from "../../components/OwnerLiveMap"
 
 export default function OwnerDashboard() {
   const router = useRouter();
@@ -17,6 +18,7 @@ export default function OwnerDashboard() {
   const [shop, setShop] = useState<ShopDetails | null>(null);
   const [userDetails, setUserDetails] = useState<UserDetails | null>(null);
   const [showQrDialog, setShowQrDialog] = useState(false);
+  const [allShopLocations, setAllShopLocations] = useState<ShopLocationMapData[]>([]);
 
   const ownerId = getUserIdFromToken();
   const token = getToken();
@@ -123,10 +125,10 @@ export default function OwnerDashboard() {
             </a>
           </div>
 
-          {/* MAP PLACEHOLDER */}
-          <div className="w-full h-[260px] bg-gray-200 rounded-[16px] flex items-center justify-center shadow-sm border border-gray-100">
-            <p className="text-gray-500 font-medium">Live Map (Skipped)</p>
-          </div>
+          {/* LIVE TRACKING MAP */}
+          {ownerId && shop && (
+            <OwnerLiveMap ownerId={ownerId} shop={shop} allShops={allShopLocations} />
+          )}
 
           {/* PERFORMANCE CHART */}
           <div className="bg-white rounded-[16px] p-4 shadow-sm border border-[#F3F4F6]">

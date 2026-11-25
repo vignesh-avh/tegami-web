@@ -312,6 +312,50 @@ function ShopProductCard({ product, shop, userId, shopId }: { product: Product, 
   ].filter(Boolean) as string[];
   const hasMultipleImages = allImages.length > 1;
 
+  // ---- Fullscreen gallery zoom / pan state ----
+  const [zoomScale, setZoomScale] = useState(1);
+  const [zoomPos, setZoomPos] = useState({ x: 0, y: 0 });
+  const touchStartX = useRef<number | null>(null);
+  const pinchStartDist = useRef<number | null>(null);
+  const pinchStartScale = useRef<number>(1);
+  const panStart = useRef<{ x: number, y: number } | null>(null);
+  const panStartPos = useRef<{ x: number, y: number }>({ x: 0, y: 0 });
+  const lastTap = useRef<number>(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const clampScale = (s: number) => Math.max(1, Math.min(4, s));
+  const zoomStateRef = useRef({ scale: 1, pos: { x: 0, y: 0 } });
+
+  useEffect(() => {
+    zoomStateRef.current = { scale: zoomScale, pos: zoomPos };
+  }, [zoomScale, zoomPos]);
+
+  // Native non-passive wheel listener (React's onWheel is passive, so
+  // e.preventDefault() inside it silently fails — attach directly).
+  useEffect(() => {
+    if (!showZoomedImage) return;
+    const el = containerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const cx = e.clientX - rect.left - rect.width / 2;
+      const cy = e.clientY - rect.top - rect.height / 2;
+      const { scale, pos } = zoomStateRef.current;
+      const delta = e.deltaY > 0 ? -0.25 : 0.25;
+      const newScale = Math.max(1, Math.min(4, scale + delta));
+      if (newScale === scale) return;
+      if (newScale === 1) {
+        setZoomScale(1); setZoomPos({ x: 0, y: 0 });
+      } else {
+        const r = newScale / scale;
+        setZoomPos({ x: cx * (1 - r) + pos.x * r, y: cy * (1 - r) + pos.y * r });
+        setZoomScale(newScale);
+      }
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [showZoomedImage]);
+
   useEffect(() => {
     const prefs = localStorage.getItem(`ask_cooldown_${product.id}`);
     if (prefs) setLastAsked(parseInt(prefs));
@@ -347,8 +391,7 @@ function ShopProductCard({ product, shop, userId, shopId }: { product: Product, 
   const currentlyOnSale = product.isOnSale && product.saleEndDate && new Date(product.saleEndDate) > new Date();
   const displayName = product.name || (product as any).product_name || "Unknown Product";
 
-  // Touch swipe logic for mobile image gallery
-  const touchStartX = useRef<number | null>(null);
+  // Touch swipe logic for the small card thumbnail
   const handleTouchStart = (e: React.TouchEvent) => { touchStartX.current = e.touches[0].clientX; };
   const handleTouchEnd = (e: React.TouchEvent) => {
     if (touchStartX.current === null || !hasMultipleImages) return;
@@ -450,15 +493,147 @@ function ShopProductCard({ product, shop, userId, shopId }: { product: Product, 
         </div>
       </div>
 
-      {/* ZOOM MODAL */}
+        {/* ZOOM MODAL — fullscreen gallery with pinch/pan/double-tap/wheel/swipe */}
       {showZoomedImage && (
-        <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4" onClick={() => setShowZoomedImage(false)}>
-          <div className="relative w-full max-w-lg aspect-square">
-            <img src={allImages[currentImageIndex]} alt={displayName} className="w-full h-full object-contain" />
-            <button className="absolute top-2 right-2 w-8 h-8 bg-black/50 text-white rounded-full flex items-center justify-center">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        <div 
+          className="fixed inset-0 z-[200] bg-black/95 flex flex-col items-center justify-center touch-none select-none"
+          onTouchStart={(e) => {
+            if (e.touches.length === 2) {
+              const dx = e.touches[0].clientX - e.touches[1].clientX;
+              const dy = e.touches[0].clientY - e.touches[1].clientY;
+              pinchStartDist.current = Math.hypot(dx, dy);
+              pinchStartScale.current = zoomScale;
+              touchStartX.current = null;
+            } else if (e.touches.length === 1) {
+              const x = e.touches[0].clientX;
+              const y = e.touches[0].clientY;
+              if (zoomScale > 1) {
+                panStart.current = { x, y };
+                panStartPos.current = { ...zoomPos };
+              } else {
+                touchStartX.current = x;
+              }
+              const now = Date.now();
+              if (now - lastTap.current < 300) {
+                if (zoomScale > 1) { setZoomScale(1); setZoomPos({ x: 0, y: 0 }); }
+                else { setZoomScale(2.5); }
+                touchStartX.current = null;
+                lastTap.current = 0;
+              } else {
+                lastTap.current = now;
+              }
+            }
+          }}
+          onTouchMove={(e) => {
+            if (e.touches.length === 2 && pinchStartDist.current) {
+              const dx = e.touches[0].clientX - e.touches[1].clientX;
+              const dy = e.touches[0].clientY - e.touches[1].clientY;
+              const dist = Math.hypot(dx, dy);
+              const newScale = clampScale(pinchStartScale.current * (dist / pinchStartDist.current));
+              setZoomScale(newScale);
+              if (newScale === 1) setZoomPos({ x: 0, y: 0 });
+            } else if (e.touches.length === 1 && panStart.current && zoomScale > 1) {
+              const dx = e.touches[0].clientX - panStart.current.x;
+              const dy = e.touches[0].clientY - panStart.current.y;
+              setZoomPos({ x: panStartPos.current.x + dx, y: panStartPos.current.y + dy });
+            }
+          }}
+          onTouchEnd={(e) => {
+            if (e.touches.length < 2) pinchStartDist.current = null;
+            if (touchStartX.current !== null && zoomScale === 1 && hasMultipleImages) {
+              const touchEndX = e.changedTouches[0].clientX;
+              const distance = touchStartX.current - touchEndX;
+              if (distance > 50 && currentImageIndex < allImages.length - 1) {
+                setCurrentImageIndex(prev => prev + 1);
+                setZoomScale(1); setZoomPos({ x: 0, y: 0 });
+              } else if (distance < -50 && currentImageIndex > 0) {
+                setCurrentImageIndex(prev => prev - 1);
+                setZoomScale(1); setZoomPos({ x: 0, y: 0 });
+              }
+            }
+            panStart.current = null;
+            touchStartX.current = null;
+          }}
+        >
+          {/* Header / Counter / Close */}
+          <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-50 bg-gradient-to-b from-black/80 to-transparent">
+            <span className="text-white text-sm font-bold">
+              {hasMultipleImages ? `${currentImageIndex + 1} / ${allImages.length}` : ''}
+            </span>
+            <button 
+              onClick={() => { setShowZoomedImage(false); setZoomScale(1); setZoomPos({ x: 0, y: 0 }); }} 
+              className="w-10 h-10 bg-black/50 text-white rounded-full flex items-center justify-center"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
             </button>
           </div>
+
+          {/* Image Container (pinch / pan / wheel / drag) */}
+          <div 
+            ref={containerRef}
+            className={`relative w-full h-full max-w-4xl flex items-center justify-center overflow-hidden ${zoomScale > 1 ? 'cursor-grab' : ''}`}
+            onMouseDown={(e) => {
+              if (zoomScale > 1) {
+                panStart.current = { x: e.clientX, y: e.clientY };
+                panStartPos.current = { ...zoomPos };
+              }
+            }}
+            onMouseMove={(e) => {
+              if (panStart.current && zoomScale > 1) {
+                const dx = e.clientX - panStart.current.x;
+                const dy = e.clientY - panStart.current.y;
+                setZoomPos({ x: panStartPos.current.x + dx, y: panStartPos.current.y + dy });
+              }
+            }}
+            onMouseUp={() => { panStart.current = null; }}
+            onMouseLeave={() => { panStart.current = null; }}
+          >
+            <img 
+              src={allImages[currentImageIndex]} 
+              alt={displayName} 
+              className="max-w-full max-h-full object-contain transition-transform duration-100 ease-out"
+              style={{ transform: `translate(${zoomPos.x}px, ${zoomPos.y}px) scale(${zoomScale})` }}
+              draggable={false}
+              onContextMenu={(e) => e.preventDefault()}
+              onClick={(e) => e.stopPropagation()} 
+            />
+          </div>
+
+          {/* Navigation Arrows (Desktop only; hidden while zoomed) */}
+          {hasMultipleImages && zoomScale === 1 && (
+            <>
+              {currentImageIndex > 0 && (
+                <button 
+                  onClick={() => { setCurrentImageIndex(prev => prev - 1); setZoomScale(1); setZoomPos({ x: 0, y: 0 }); }} 
+                  className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 bg-black/50 text-white rounded-full flex items-center justify-center z-50 hover:bg-black/80"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"></path></svg>
+                </button>
+              )}
+              {currentImageIndex < allImages.length - 1 && (
+                <button 
+                  onClick={() => { setCurrentImageIndex(prev => prev + 1); setZoomScale(1); setZoomPos({ x: 0, y: 0 }); }} 
+                  className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 bg-black/50 text-white rounded-full flex items-center justify-center z-50 hover:bg-black/80"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
+                </button>
+              )}
+            </>
+          )}
+
+          {/* Dot indicators inside the gallery (tappable) */}
+          {hasMultipleImages && (
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-black/50 rounded-full px-3 py-2 flex gap-2 z-50">
+              {allImages.map((_, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => { setCurrentImageIndex(idx); setZoomScale(1); setZoomPos({ x: 0, y: 0 }); }}
+                  className={`rounded-full transition-all ${idx === currentImageIndex ? 'w-2.5 h-2.5 bg-white' : 'w-2 h-2 bg-white/50'}`}
+                  aria-label={`Show image ${idx + 1}`}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </>

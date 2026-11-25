@@ -13,6 +13,7 @@
     "deploy:vinext": "vinext-cloudflare deploy"
   },
   "dependencies": {
+    "@react-oauth/google": "^0.13.5",
     "@tailwindcss/postcss": "^4.3.5",
     "@vinext/cloudflare": "^1.4.0",
     "maplibre-gl": "^6.19.0",
