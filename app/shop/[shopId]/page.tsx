@@ -598,6 +598,7 @@ function ShopProductCard({ product, shop, userId, shopId }: { product: Product, 
               onClick={(e) => e.stopPropagation()} 
             />
           </div>
+          // Triggering rebuild for environment variables
 
           {/* Navigation Arrows (Desktop only; hidden while zoomed) */}
           {hasMultipleImages && zoomScale === 1 && (
