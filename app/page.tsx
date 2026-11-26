@@ -91,6 +91,23 @@ export default function CustomerHomePage() {
   const [extended, setExtended] = useState<HomeProduct[]>([]);
   const [popularShops, setPopularShops] = useState<Shop[]>([]);
 
+  // Pagination States
+  const ITEMS_LIMIT = 8;
+  const [dealsSkip, setDealsSkip] = useState(0);
+  const [trendingSkip, setTrendingSkip] = useState(0);
+  const [bestPriceSkip, setBestPriceSkip] = useState(0);
+  const [extendedSkip, setExtendedSkip] = useState(0);
+
+  const [dealsHasMore, setDealsHasMore] = useState(true);
+  const [trendingHasMore, setTrendingHasMore] = useState(true);
+  const [bestPriceHasMore, setBestPriceHasMore] = useState(true);
+  const [extendedHasMore, setExtendedHasMore] = useState(true);
+
+  const [dealsPaginating, setDealsPaginating] = useState(false);
+  const [trendingPaginating, setTrendingPaginating] = useState(false);
+  const [bestPricePaginating, setBestPricePaginating] = useState(false);
+  const [extendedPaginating, setExtendedPaginating] = useState(false);
+
   // User & Consent states
   const [userDetails, setUserDetails] = useState<UserDetails | null>(null);
   const [showConsentDialog, setShowConsentDialog] = useState(false);
@@ -224,21 +241,48 @@ export default function CustomerHomePage() {
 
   const fetchData = async (latitude: number, longitude: number, category?: string, attempt = 0) => {
     setLoading(true);
+    
+    // Reset pagination on fresh load (e.g., category change or location change)
+    setDealsSkip(0);
+    setTrendingSkip(0);
+    setBestPriceSkip(0);
+    setExtendedSkip(0);
+    setDealsHasMore(true);
+    setTrendingHasMore(true);
+    setBestPriceHasMore(true);
+    setExtendedHasMore(true);
+
     let failed = false as boolean;
     let retrying = false as boolean;
     try {
       const [d, t, b, e, s] = await Promise.all([
-        getDeals(latitude, longitude, category).catch(() => { failed = true; return { products: [] }; }),
-        getTrendingProducts(latitude, longitude, category).catch(() => { failed = true; return { products: [] }; }),
-        getBestPriceProducts(latitude, longitude, category).catch(() => { failed = true; return { products: [] }; }),
-        getExtendedDeals(latitude, longitude, category).catch(() => { failed = true; return { products: [] }; }),
+        getDeals(latitude, longitude, category, ITEMS_LIMIT, 0).catch(() => { failed = true; return { products: [] }; }),
+        getTrendingProducts(latitude, longitude, category, ITEMS_LIMIT, 0).catch(() => { failed = true; return { products: [] }; }),
+        getBestPriceProducts(latitude, longitude, category, ITEMS_LIMIT, 0).catch(() => { failed = true; return { products: [] }; }),
+        getExtendedDeals(latitude, longitude, category, ITEMS_LIMIT, 0).catch(() => { failed = true; return { products: [] }; }),
         getNearbyShops(latitude, longitude, category).catch(() => { failed = true; return null; })
       ]);
-      setDeals(d.products || []);
-      setTrending(t.products || []);
-      setBestPrice(b.products || []);
-      setExtended(e.products || []);
-      if (s && s.shops) setPopularShops(s.shops);
+      // Helper to remove duplicates from the array based on _id
+      const dedupe = (list: any[]) => {
+        if (!list) return [];
+        return Array.from(new Map(list.map(item => [item._id, item])).values());
+      };
+
+      setDeals(dedupe(d.products));
+      setTrending(dedupe(t.products));
+      setBestPrice(dedupe(b.products));
+      setExtended(dedupe(e.products));
+      if (s && s.shops) {
+        // Dedupe shops by _id so React keys are unique
+        const uniqueShops = Array.from(new Map(s.shops.map((sh: Shop) => [sh._id, sh])).values());
+        setPopularShops(uniqueShops);
+      }
+
+      // Check if there are more items to load
+      if (!d.products || d.products.length < ITEMS_LIMIT) setDealsHasMore(false);
+      if (!t.products || t.products.length < ITEMS_LIMIT) setTrendingHasMore(false);
+      if (!b.products || b.products.length < ITEMS_LIMIT) setBestPriceHasMore(false);
+      if (!e.products || e.products.length < ITEMS_LIMIT) setExtendedHasMore(false);
 
       // If something failed, try again (up to 2 more times)
       if (failed && attempt < 2) {
@@ -258,6 +302,81 @@ export default function CustomerHomePage() {
       fetchData(coords.lat, coords.lng, category === "All" ? undefined : category);
     }
   };
+
+  // --- PAGINATION LOAD MORE FUNCTIONS ---
+  const loadMoreDeals = async () => {
+    if (!coords || dealsPaginating || !dealsHasMore) return;
+    setDealsPaginating(true);
+    try {
+      const res = await getDeals(coords.lat, coords.lng, selectedCategory === "All" ? undefined : selectedCategory, ITEMS_LIMIT, dealsSkip + ITEMS_LIMIT);
+      if (res.products && res.products.length > 0) {
+        setDeals(prev => {
+          // Dedupe against prev AND within the incoming batch by _id
+          const combined = [...prev, ...res.products];
+          return Array.from(new Map(combined.map((p: any) => [p._id, p])).values());
+        });
+        setDealsSkip(prev => prev + ITEMS_LIMIT);
+        if (res.products.length < ITEMS_LIMIT) setDealsHasMore(false);
+      } else {
+        setDealsHasMore(false);
+      }
+    } catch (e) {} finally { setDealsPaginating(false); }
+  };
+
+  const loadMoreTrending = async () => {
+    if (!coords || trendingPaginating || !trendingHasMore) return;
+    setTrendingPaginating(true);
+    try {
+      const res = await getTrendingProducts(coords.lat, coords.lng, selectedCategory === "All" ? undefined : selectedCategory, ITEMS_LIMIT, trendingSkip + ITEMS_LIMIT);
+      if (res.products && res.products.length > 0) {
+        setTrending(prev => {
+          const combined = [...prev, ...res.products];
+          return Array.from(new Map(combined.map((p: any) => [p._id, p])).values());
+        });
+        setTrendingSkip(prev => prev + ITEMS_LIMIT);
+        if (res.products.length < ITEMS_LIMIT) setTrendingHasMore(false);
+      } else {
+        setTrendingHasMore(false);
+      }
+    } catch (e) {} finally { setTrendingPaginating(false); }
+  };
+
+  const loadMoreBestPrice = async () => {
+    if (!coords || bestPricePaginating || !bestPriceHasMore) return;
+    setBestPricePaginating(true);
+    try {
+      const res = await getBestPriceProducts(coords.lat, coords.lng, selectedCategory === "All" ? undefined : selectedCategory, ITEMS_LIMIT, bestPriceSkip + ITEMS_LIMIT);
+      if (res.products && res.products.length > 0) {
+        setBestPrice(prev => {
+          const combined = [...prev, ...res.products];
+          return Array.from(new Map(combined.map((p: any) => [p._id, p])).values());
+        });
+        setBestPriceSkip(prev => prev + ITEMS_LIMIT);
+        if (res.products.length < ITEMS_LIMIT) setBestPriceHasMore(false);
+      } else {
+        setBestPriceHasMore(false);
+      }
+    } catch (e) {} finally { setBestPricePaginating(false); }
+  };
+
+  const loadMoreExtended = async () => {
+    if (!coords || extendedPaginating || !extendedHasMore) return;
+    setExtendedPaginating(true);
+    try {
+      const res = await getExtendedDeals(coords.lat, coords.lng, selectedCategory === "All" ? undefined : selectedCategory, ITEMS_LIMIT, extendedSkip + ITEMS_LIMIT);
+      if (res.products && res.products.length > 0) {
+        setExtended(prev => {
+          const combined = [...prev, ...res.products];
+          return Array.from(new Map(combined.map((p: any) => [p._id, p])).values());
+        });
+        setExtendedSkip(prev => prev + ITEMS_LIMIT);
+        if (res.products.length < ITEMS_LIMIT) setExtendedHasMore(false);
+      } else {
+        setExtendedHasMore(false);
+      }
+    } catch (e) {} finally { setExtendedPaginating(false); }
+  };
+  // -------------------------------------
 
   const handleAcceptConsent = async () => {
     setShowConsentDialog(false);
@@ -357,52 +476,55 @@ export default function CustomerHomePage() {
 
       <div className="w-full max-w-7xl mx-auto flex flex-col">
         <InstallAppBanner />
-        {/* FIXED TOP AREA: header, subtitle, search, categories (pinned like Android) */}
-        <div className="sticky top-0 z-50 bg-[#F6F6F6]">
-        {/* HEADER */}
-        <div className="px-4 pt-2 pb-[2px] flex justify-between items-center">
-          <div className="flex items-center">
-            <h1 className="text-[24px] font-semibold tracking-[-0.8px] text-black">Tegami</h1>
+        {/* SCROLLABLE HEADER SECTION */}
+        <div className="bg-[#F6F6F6]">
+          {/* HEADER */}
+          <div className="px-4 pt-2 pb-[2px] flex justify-between items-center">
+            <div className="flex items-center">
+              <h1 className="text-[24px] font-semibold tracking-[-0.8px] text-black">Tegami</h1>
+            </div>
+            <div className="flex items-center space-x-3">
+              {role && userDetails && (
+                <Link href="/coins" className="flex items-center bg-transparent rounded-full px-1 py-[2px]">
+                  <div className="w-[28px] h-[28px] rounded-full flex items-center justify-center mr-1.5 shadow-[0_2px_4px_rgba(255,215,0,0.5)]" style={{ background: "linear-gradient(135deg, #FFDF00, #D4AF37)" }}>
+                    <span className="text-[12px] font-extrabold text-white">₹</span>
+                  </div>
+                  <span className="text-[17px] font-bold text-black">{userDetails.coins || 0}</span>
+                </Link>
+              )}
+              {!role && <Link href="/owner/login" className="text-sm font-bold text-[#6200EE]">Are you an owner?</Link>}
+              <button 
+                onClick={() => { if (role) setIsSidebarOpen(true); else router.push("/login"); }} 
+                className="w-[38px] h-[38px] bg-white rounded-full flex items-center justify-center shadow-sm"
+              >
+                <svg className="w-[32px] h-[32px] text-black" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM7.07 18.28c.43-.9 3.05-1.78 4.93-1.78s4.51.88 4.93 1.78C15.57 19.36 13.86 20 12 20s-3.57-.64-4.93-1.72zm11.29-1.45c-1.43-1.74-4.9-2.33-6.36-2.33s-4.93.59-6.36 2.33C4.62 15.49 4 13.82 4 12c0-4.41 3.59-8 8-8s8 3.59 8 8c0 1.82-.62 3.49-1.64 4.83zM12 6c-1.94 0-3.5 1.56-3.5 3.5S10.06 13 12 13s3.5-1.56 3.5-3.5S13.94 6 12 6zm0 5c-.83 0-1.5-.67-1.5-1.5S11.17 8 12 8s1.5.67 1.5 1.5S12.83 11 12 11z"></path></svg>
+              </button>
+            </div>
           </div>
-          <div className="flex items-center space-x-3">
-            {role && userDetails && (
-              <Link href="/coins" className="flex items-center bg-transparent rounded-full px-1 py-[2px]">
-                <div className="w-[28px] h-[28px] rounded-full flex items-center justify-center mr-1.5 shadow-[0_2px_4px_rgba(255,215,0,0.5)]" style={{ background: "linear-gradient(135deg, #FFDF00, #D4AF37)" }}>
-                  <span className="text-[12px] font-extrabold text-white">₹</span>
-                </div>
-                <span className="text-[17px] font-bold text-black">{userDetails.coins || 0}</span>
-              </Link>
-            )}
-            {!role && <Link href="/owner/login" className="text-sm font-bold text-[#6200EE]">Are you an owner?</Link>}
-            <button 
-              onClick={() => { if (role) setIsSidebarOpen(true); else router.push("/login"); }} 
-              className="w-[38px] h-[38px] bg-white rounded-full flex items-center justify-center shadow-sm"
-            >
-              <svg className="w-[32px] h-[32px] text-black" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM7.07 18.28c.43-.9 3.05-1.78 4.93-1.78s4.51.88 4.93 1.78C15.57 19.36 13.86 20 12 20s-3.57-.64-4.93-1.72zm11.29-1.45c-1.43-1.74-4.9-2.33-6.36-2.33s-4.93.59-6.36 2.33C4.62 15.49 4 13.82 4 12c0-4.41 3.59-8 8-8s8 3.59 8 8c0 1.82-.62 3.49-1.64 4.83zM12 6c-1.94 0-3.5 1.56-3.5 3.5S10.06 13 12 13s3.5-1.56 3.5-3.5S13.94 6 12 6zm0 5c-.83 0-1.5-.67-1.5-1.5S11.17 8 12 8s1.5.67 1.5 1.5S12.83 11 12 11z"></path></svg>
-            </button>
-          </div>
-        </div>
 
-        <div className="px-4">
-          <h2 className="text-[14px] font-medium text-[#424242] whitespace-nowrap overflow-hidden">Find what's available nearby — instantly.</h2>
-          <div className="flex items-center">
-            <div className="w-2 h-2 rounded-full bg-[#047857] mr-2 shrink-0" style={{ animation: "avLivePulse 0.8s ease-in-out infinite alternate" }}></div>
-            <p className="flex-1 min-w-0 text-[14px] font-medium text-[#424242] whitespace-nowrap overflow-hidden">{shopCount} shops changed prices in the last 30 minutes</p>
-          </div>
-        </div>
-
-        {/* SEARCH BAR */}
-        <div className="px-4 py-1">
-          <div onClick={() => router.push("/shops")} className="bg-[#E0E0E0] rounded-full px-4 h-[44px] flex items-center cursor-pointer">
-            <svg className="w-[24px] h-[24px] text-black mr-2 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-            <div className="flex-1 min-w-0 overflow-hidden h-[20px]">
-              <span key={placeholderIndex} className="block text-[14px] leading-[20px] italic text-[#444444] truncate" style={{ animation: "avPlaceholderIn 0.4s ease-out" }}>{SEARCH_PLACEHOLDERS[placeholderIndex]}</span>
+          <div className="px-4">
+            <h2 className="text-[14px] font-medium text-[#424242] whitespace-nowrap overflow-hidden">Find what's available nearby — instantly.</h2>
+            <div className="flex items-center">
+              <div className="w-2 h-2 rounded-full bg-[#047857] mr-2 shrink-0" style={{ animation: "avLivePulse 0.8s ease-in-out infinite alternate" }}></div>
+              <p className="flex-1 min-w-0 text-[14px] font-medium text-[#424242] whitespace-nowrap overflow-hidden">{shopCount} shops changed prices in the last 30 minutes</p>
             </div>
           </div>
         </div>
 
-        {/* CATEGORY ROW */}
-        <CategoryScrollRow selected={selectedCategory} onSelect={handleCategorySelect} />
+        {/* STICKY AREA: Search Bar & Categories */}
+        <div className="sticky top-0 z-50 bg-[#F6F6F6]">
+          {/* SEARCH BAR */}
+          <div className="px-4 py-1">
+            <div onClick={() => router.push("/shops")} className="bg-[#E0E0E0] rounded-full px-4 h-[44px] flex items-center cursor-pointer">
+              <svg className="w-[24px] h-[24px] text-black mr-2 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+              <div className="flex-1 min-w-0 overflow-hidden h-[20px]">
+                <span key={placeholderIndex} className="block text-[14px] leading-[20px] italic text-[#444444] truncate" style={{ animation: "avPlaceholderIn 0.4s ease-out" }}>{SEARCH_PLACEHOLDERS[placeholderIndex]}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* CATEGORY ROW */}
+          <CategoryScrollRow selected={selectedCategory} onSelect={handleCategorySelect} />
         </div>
 
         {/* LOCATION ROW */}
@@ -440,10 +562,46 @@ export default function CustomerHomePage() {
             <>
               <LiveFindsSection lat={coords.lat} lng={coords.lng} />
               
-              <ProductSection title="Deals Near You" description="Offers ending today in shops around you" products={deals} sectionType="DEALS" seeAllLink="/deals" isLoading={loading} />
-              <ProductSection title="Trending Near You" description="Most viewed products in the last 1 hour" products={trending} sectionType="TRENDING" seeAllLink="/trending" isLoading={loading} />
-              <ProductSection title="Best Price Nearby" description="Cheapest options available around you" products={bestPrice} sectionType="BEST_PRICE" seeAllLink="/best-price" isLoading={loading} />
-              <ProductSection title="Worth the Distance" description="People travel a bit extra for these deals" products={extended} sectionType="DISTANCE" seeAllLink="/extended" isLoading={loading} />
+              <ProductSection 
+                title="Deals Near You" 
+                description="Offers ending today in shops around you" 
+                products={deals} 
+                sectionType="DEALS" 
+                seeAllLink="/deals" 
+                isLoading={loading} 
+                isPaginating={dealsPaginating} 
+                onLoadMore={loadMoreDeals} 
+              />
+              <ProductSection 
+                title="Trending Near You" 
+                description="Most viewed products in the last 1 hour" 
+                products={trending} 
+                sectionType="TRENDING" 
+                seeAllLink="/trending" 
+                isLoading={loading} 
+                isPaginating={trendingPaginating} 
+                onLoadMore={loadMoreTrending} 
+              />
+              <ProductSection 
+                title="Best Price Nearby" 
+                description="Cheapest options available around you" 
+                products={bestPrice} 
+                sectionType="BEST_PRICE" 
+                seeAllLink="/best-price" 
+                isLoading={loading} 
+                isPaginating={bestPricePaginating} 
+                onLoadMore={loadMoreBestPrice} 
+              />
+              <ProductSection 
+                title="Worth the Distance" 
+                description="People travel a bit extra for these deals" 
+                products={extended} 
+                sectionType="DISTANCE" 
+                seeAllLink="/extended" 
+                isLoading={loading} 
+                isPaginating={extendedPaginating} 
+                onLoadMore={loadMoreExtended} 
+              />
 
               {/* POPULAR SHOPS */}
               {!loading && popularShops.length > 0 && (

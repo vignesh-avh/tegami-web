@@ -169,11 +169,12 @@ export const recordProductView = async (productId: string, shopId: string): Prom
   await apiFetch(`record-view/${productId}?shop_id=${shopId}`, { method: "POST" });
 };
 
-export const askAvailability = async (productId: string, userId: string): Promise<void> => {
-  await apiFetch("ask-availability", {
+export const askAvailability = async (productId: string, userId: string): Promise<boolean> => {
+  const res = await apiFetch("ask-availability", {
     method: "POST",
     body: JSON.stringify({ product_id: productId, user_id: userId })
   });
+  return res.ok; // Returns true if status is 200-299, false otherwise
 };
 
 export const getLiveFindsFeed = async (lat: number, lng: number, limit = 20, offset = 0) => {

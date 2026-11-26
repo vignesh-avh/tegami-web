@@ -126,21 +126,33 @@ function ShopDetailsContent() {
   const categoryList = Object.keys(categoryCounts).sort((a, b) => categoryCounts[b] - categoryCounts[a]);
   const categories = ["All", ...categoryList];
   
-  const filteredProducts = productsList
-    .filter(p => selectedCategory === "All" || p.category === selectedCategory)
-    .filter(p => {
-      const pName = p.name || (p as any).product_name || "";
-      return pName.toLowerCase().includes(searchQuery.toLowerCase());
-    })
-    .sort((a, b) => {
-      const aSale = a.isOnSale && new Date(a.saleEndDate || 0) > new Date();
-      const bSale = b.isOnSale && new Date(b.saleEndDate || 0) > new Date();
-      if (aSale && !bSale) return -1;
-      if (!aSale && bSale) return 1;
-      if (a.inStock && !b.inStock) return -1;
-      if (!a.inStock && b.inStock) return 1;
-      return 0;
+  const filteredProducts = (() => {
+    const sorted = productsList
+      .filter(p => selectedCategory === "All" || p.category === selectedCategory)
+      .filter(p => {
+        const pName = p.name || (p as any).product_name || "";
+        return pName.toLowerCase().includes(searchQuery.toLowerCase());
+      })
+      .sort((a, b) => {
+        const aSale = a.isOnSale && new Date(a.saleEndDate || 0) > new Date();
+        const bSale = b.isOnSale && new Date(b.saleEndDate || 0) > new Date();
+        if (aSale && !bSale) return -1;
+        if (!aSale && bSale) return 1;
+        if (a.inStock && !b.inStock) return -1;
+        if (!a.inStock && b.inStock) return 1;
+        return 0;
+      });
+
+    // Dedupe by product id so React keys stay unique
+    const seen = new Set<any>();
+    return sorted.filter((p) => {
+      const key = p.id || (p as any)._id || (p as any).product_id;
+      if (!key) return true;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
     });
+  })();
 
   const distanceText = userLocation ? (
     (() => {
@@ -376,14 +388,37 @@ function ShopProductCard({ product, shop, userId, shopId }: { product: Product, 
   };
 
   const handleAskAvailability = async () => {
-    if (!userId || !canAsk) return;
+    // 1. Redirect if guest/logged out
+    if (!userId) {
+      router.push("/login");
+      return;
+    }
+    
+    // 2. Prevent spamming if already asked
+    if (!canAsk) return;
+    
+    // Safely get the ID (handles both id and _id)
+    const pId = product.id || (product as any)._id || (product as any).product_id;
+    if (!pId) {
+      alert("Error: Product ID is missing.");
+      return;
+    }
+
     try {
-      await askAvailability(product.id, userId);
-      const now = new Date().getTime();
-      setLastAsked(now);
-      localStorage.setItem(`ask_cooldown_${product.id}`, now.toString());
-      alert("Request sent! Owner notified.");
+      // Now this returns a boolean
+      const success = await askAvailability(pId, userId);
+      
+      if (success) {
+        // Only set cooldown if it actually succeeded
+        const now = new Date().getTime();
+        setLastAsked(now);
+        localStorage.setItem(`ask_cooldown_${pId}`, now.toString());
+        alert("Request sent! Owner notified.");
+      } else {
+        alert("Failed to send request. The server rejected it.");
+      }
     } catch (e) {
+      console.error("Notify Me Error:", e);
       alert("Failed to send request.");
     }
   };
