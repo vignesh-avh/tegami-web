@@ -35,20 +35,21 @@ function ShopDetailsContent() {
   
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // If customer arrived directly (QR / link), phone back button goes to Home
+  // If customer arrived directly (QR / link or Google), phone back button goes to Home
   useEffect(() => {
-    let visitedHome = false;
-    try {
-      visitedHome = sessionStorage.getItem("av_visited_home") === "1";
-    } catch (e) {}
-    if (visitedHome) return;
+    // Check if the user has a "referrer" that isn't our own domain (meaning they came from Google)
+    const referrer = document.referrer;
+    const isExternal = referrer && !referrer.includes(window.location.hostname);
 
-    window.history.pushState({ avGuard: true }, "", window.location.href);
-    const onPopState = () => {
-      router.replace("/");
-    };
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
+    // If external, force the back button to push to home
+    if (isExternal) {
+        window.history.pushState(null, "", window.location.href);
+        const onPopState = () => {
+            router.replace("/");
+        };
+        window.addEventListener("popstate", onPopState);
+        return () => window.removeEventListener("popstate", onPopState);
+    }
   }, [router]);
   useEffect(() => {
     if (!shopId) return;
@@ -163,19 +164,54 @@ function ShopDetailsContent() {
 
   return (
     <div className="min-h-screen bg-[#F5F5F5] pb-20 font-sans">
-      
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "LocalBusiness",
+            "name": shop.name,
+            "description": shop.description,
+            "telephone": shop.mobile_number,
+            "address": {
+              "@type": "PostalAddress",
+              "addressLocality": "Boduppal",
+              "addressRegion": "Hyderabad",
+              "addressCountry": "IN"
+            },
+            "geo": {
+              "@type": "GeoCoordinates",
+              "latitude": shop.latitude,
+              "longitude": shop.longitude
+            },
+            "hasOfferCatalog": {
+              "@type": "OfferCatalog",
+              "name": "Products",
+              "itemListElement": (shop.products || []).slice(0, 50).map(p => ({
+                "@type": "Offer",
+                "itemOffered": {
+                  "@type": "Product",
+                  "name": (p as any).product_name || p.name,
+                  "image": p.imageUrl
+                },
+                "price": p.price,
+                "priceCurrency": "INR"
+              }))
+            }
+          })
+        }}
+      />
       {/* TOP BAR */}
       <div className="sticky top-0 z-50 bg-white shadow-sm px-2 py-2 flex items-center justify-between">
         <button
           onClick={() => {
-            let visitedHome = false;
-            try {
-              visitedHome = sessionStorage.getItem("av_visited_home") === "1";
-            } catch (e) {}
-            if (visitedHome) {
-              router.back();
-            } else {
+            const referrer = document.referrer;
+            const isExternal = referrer && !referrer.includes(window.location.hostname);
+
+            if (isExternal) {
               router.push("/");
+            } else {
+              router.back();
             }
           }}
           className="p-2 text-black"
