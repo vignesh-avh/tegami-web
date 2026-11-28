@@ -221,29 +221,40 @@ export default function OwnerDashboard() {
               <button
                 onClick={async () => {
                   const shopUrl = `https://avapp.in/shop/${ownerId}`;
-                  const shareText = `Hey! 👋 Check out my local store on Tegami!\n\nTap the link below to explore my shop and grab the best deals right in our neighborhood:\n\n👉 ${shopUrl}`;
+                  const message = `Hey! 👋 Check out my local store on Tegami!\n\nTap the link below to explore my shop and grab the best deals right in our neighborhood:`;
 
                   try {
-                    // Try native Web Share API with text only
-                    if (navigator.share && navigator.canShare({ text: shareText })) {
-                      await navigator.share({
-                        title: 'Check out my shop on Tegami!',
-                        text: shareText,
-                      });
+                    // 1. Fetch QR code
+                    const qrResponse = await fetch(`https://api.avapp.in/shop/generate-qr/${ownerId}`);
+                    const qrBlob = await qrResponse.blob();
+                    const file = new File([qrBlob], "shop_qr.png", { type: "image/png" });
+
+                    // 2. Prepare share data (Using the 'url' field for better link handling)
+                    const shareData = {
+                      title: 'Check out my shop on Tegami!',
+                      text: message,
+                      url: shopUrl,
+                      files: [file]
+                    };
+
+                    // 3. Native share
+                    if (navigator.canShare && navigator.canShare(shareData)) {
+                      await navigator.share(shareData);
                     } else {
                       // Fallback: Copy to clipboard
-                      await navigator.clipboard.writeText(shareText);
-                      alert("Link and message copied to clipboard!");
+                      await navigator.clipboard.writeText(`${message}\n\n${shopUrl}`);
+                      alert("Link and message copied!");
                     }
                   } catch (err) {
                     console.error('Error sharing:', err);
                     alert("Error sharing. Please try again.");
                   }
                 }}
-                className="bg-[#6200EE] text-white rounded-[8px] font-bold text-[14px] px-4 py-2 flex items-center justify-center"
+                className="w-full bg-white rounded-[12px] p-4 flex items-center shadow-sm border border-[#F3F4F6] transition-transform active:scale-[0.99]"
               >
-                <svg className="w-[16px] h-[16px] mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path></svg>
-                Share Shop Link
+                <svg className="w-[24px] h-[24px] text-[#6200EE]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm14 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
+                <span className="text-[16px] font-medium text-black ml-4">Share QR & Link</span>
+                <svg className="w-[24px] h-[24px] text-gray-400 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
               </button>
             </div>
           </div>
