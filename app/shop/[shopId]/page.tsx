@@ -47,14 +47,15 @@ export default async function ShopDetailsPage({ params }: { params: Promise<{ sh
                 "@type": "OfferCatalog",
                 "name": "Products",
                 "itemListElement": (shop.products || []).slice(0, 50).map((p: any) => ({
-                  "@type": "Offer",
-                  "itemOffered": {
-                    "@type": "Product",
-                    "name": (p as any).product_name || p.name,
-                    "image": p.imageUrl
-                  },
-                  "price": p.price,
-                  "priceCurrency": "INR"
+                  "@type": "Product",
+                  "name": (p as any).product_name || p.name,
+                  "image": p.imageUrl,
+                  "offers": {
+                    "@type": "Offer",
+                    "price": p.isOnSale ? (p.salePrice || p.price) : p.price,
+                    "priceCurrency": "INR",
+                    "availability": p.inStock ? "https://schema.org/InStock" : "https://schema.org/OutOfStock"
+                  }
                 }))
               }
             })
