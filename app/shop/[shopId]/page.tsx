@@ -1,6 +1,34 @@
-export const dynamic = 'force-dynamic';
+import { Metadata } from "next";
 import { Suspense } from "react";
 import ShopDetailsClient from "./ShopDetailsClient";
+
+// 1. Dynamic Metadata for WhatsApp/Google/Social Previews
+export async function generateMetadata({ params }: { params: Promise<{ shopId: string }> }): Promise<Metadata> {
+  const awaitedParams = await params;
+  const shopData = await getShopData(awaitedParams.shopId);
+  const shop = shopData?.shop;
+
+  if (!shop) return { title: "Shop Not Found" };
+
+  return {
+    title: `${shop.name} | Tegami`,
+    description: shop.description || `Explore local products and deals at ${shop.name} on Tegami.`,
+    openGraph: {
+      title: shop.name,
+      description: shop.description,
+      url: `https://avapp.in/shop/${awaitedParams.shopId}`,
+      siteName: 'Tegami',
+      images: [
+        {
+          url: `https://api.avapp.in/shop/generate-qr/${awaitedParams.shopId}`, // Show QR in the preview!
+          width: 800,
+          height: 800,
+        },
+      ],
+      type: 'website',
+    },
+  };
+}
 
 // Fetch shop data for server-side rendering (SEO)
 async function getShopData(shopId: string) {
